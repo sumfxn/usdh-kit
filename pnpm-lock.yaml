@@ -164,6 +164,39 @@ importers:
         specifier: 2.1.8
         version: 2.1.8(@types/node@22.10.2)
 
+  packages/widget:
+    devDependencies:
+      '@tanstack/react-query':
+        specifier: 5.62.7
+        version: 5.62.7(react@19.0.0)
+      '@types/react':
+        specifier: 19.0.1
+        version: 19.0.1
+      '@types/react-dom':
+        specifier: 19.0.2
+        version: 19.0.2(@types/react@19.0.1)
+      '@usdh-kit/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      react:
+        specifier: 19.0.0
+        version: 19.0.0
+      react-dom:
+        specifier: 19.0.0
+        version: 19.0.0(react@19.0.0)
+      tsup:
+        specifier: 8.3.5
+        version: 8.3.5(jiti@2.6.1)(postcss@8.5.12)(tsx@4.19.2)(typescript@5.7.2)(yaml@2.6.1)
+      typescript:
+        specifier: 5.7.2
+        version: 5.7.2
+      viem:
+        specifier: 2.21.55
+        version: 2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10)
+      wagmi:
+        specifier: 2.14.6
+        version: 2.14.6(@tanstack/query-core@5.62.7)(@tanstack/react-query@5.62.7(react@19.0.0))(@types/react@19.0.1)(bufferutil@4.1.0)(react@19.0.0)(typescript@5.7.2)(utf-8-validate@5.0.10)(viem@2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10))
+
 packages:
 
   '@adraffy/ens-normalize@1.11.1':
@@ -6921,7 +6954,7 @@ snapshots:
   ox@0.1.2(typescript@5.7.2):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
-      '@noble/curves': 1.7.0
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.6.1
       '@scure/bip32': 1.6.0
       '@scure/bip39': 1.5.0
@@ -7844,7 +7877,7 @@ snapshots:
 
   webauthn-p256@0.0.10:
     dependencies:
-      '@noble/curves': 1.7.0
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.6.1
 
   webextension-polyfill@0.10.0: {}
