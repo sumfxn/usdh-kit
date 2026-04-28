@@ -20,4 +20,8 @@ export interface KitConfig {
    * @experimental
    */
   referrer?: Address
+  /** Override the global fetch. */
+  fetch?: typeof fetch
+  /** Per-request timeout in ms. Defaults to 10s. */
+  timeoutMs?: number
 }
