@@ -5,7 +5,7 @@ import { useAccount, useSignMessage, useSignTypedData, useWalletClient } from 'w
 
 import type { HyperNetwork } from './types.js'
 
-export function useUsdhKit(network: HyperNetwork = 'mainnet') {
+export function useUsdhKit(network: HyperNetwork) {
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
   const { signTypedDataAsync } = useSignTypedData()

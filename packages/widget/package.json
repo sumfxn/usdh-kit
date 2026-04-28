@@ -29,10 +29,15 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./styles.css": "./dist/styles.css",
+    "./tailwind-content": {
+      "types": "./tailwind-content.d.cts",
+      "default": "./tailwind-content.cjs"
+    },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md", "LICENSE"],
-  "sideEffects": false,
+  "files": ["dist", "tailwind-content.cjs", "tailwind-content.d.cts", "README.md", "LICENSE"],
+  "sideEffects": ["./dist/styles.css"],
   "engines": {
     "node": ">=18.18.0"
   },
@@ -42,8 +47,12 @@
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "pnpm build:js && pnpm build:css",
+    "build:js": "tsup",
+    "build:css": "tailwindcss -c tailwind.config.cjs -i ./src/styles.css -o ./dist/styles.css --minify",
     "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -56,14 +65,19 @@
   },
   "devDependencies": {
     "@tanstack/react-query": "5.62.7",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.1.0",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.2",
     "@usdh-kit/sdk": "workspace:*",
+    "jsdom": "25.0.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "tailwindcss": "3.4.17",
     "tsup": "8.3.5",
     "typescript": "5.7.2",
     "viem": "2.21.55",
+    "vitest": "2.1.8",
     "wagmi": "2.14.6"
   }
 }
