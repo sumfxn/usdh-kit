@@ -61,5 +61,20 @@
     "formatter": {
       "trailingCommas": "none"
     }
-  }
+  },
+  "overrides": [
+    {
+      "include": ["apps/examples/**"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "useLiteralKeys": "off"
+          },
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ]
 }
