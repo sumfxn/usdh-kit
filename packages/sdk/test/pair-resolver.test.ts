@@ -1,0 +1,72 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { NetworkError } from '../src/errors.js'
+import { createPairResolver, findUsdhUsdcPair } from '../src/pair-resolver.js'
+import type { InfoClient } from '../src/transport/info.js'
+import type { SpotMeta } from '../src/transport/types.js'
+
+const meta: SpotMeta = {
+  universe: [{ name: 'USDH/USDC', tokens: [1, 0], index: 0, isCanonical: true }],
+  tokens: [
+    {
+      name: 'USDC',
+      szDecimals: 8,
+      weiDecimals: 8,
+      index: 0,
+      tokenId: '0xaaaa',
+      isCanonical: true,
+    },
+    {
+      name: 'USDH',
+      szDecimals: 8,
+      weiDecimals: 8,
+      index: 1,
+      tokenId: '0xbbbb',
+      isCanonical: true,
+    },
+  ],
+}
+
+describe('findUsdhUsdcPair', () => {
+  it('finds the canonical pair', () => {
+    expect(findUsdhUsdcPair(meta)).toEqual({
+      name: 'USDH/USDC',
+      index: 0,
+      tokens: [1, 0],
+    })
+  })
+
+  it('throws when USDC is missing', () => {
+    expect(() =>
+      findUsdhUsdcPair({ ...meta, tokens: meta.tokens.filter((t) => t.name !== 'USDC') }),
+    ).toThrow(NetworkError)
+  })
+
+  it('throws when USDH is missing', () => {
+    expect(() =>
+      findUsdhUsdcPair({ ...meta, tokens: meta.tokens.filter((t) => t.name !== 'USDH') }),
+    ).toThrow(NetworkError)
+  })
+
+  it('throws when no pair links the two tokens', () => {
+    expect(() => findUsdhUsdcPair({ ...meta, universe: [] })).toThrow(NetworkError)
+  })
+})
+
+describe('createPairResolver', () => {
+  function stubInfo(): InfoClient {
+    return {
+      spotMeta: vi.fn(async () => meta),
+      l2Book: vi.fn(),
+    }
+  }
+
+  it('caches the resolved pair across calls', async () => {
+    const info = stubInfo()
+    const resolve = createPairResolver(info)
+    const a = await resolve()
+    const b = await resolve()
+    expect(a).toBe(b)
+    expect(info.spotMeta).toHaveBeenCalledOnce()
+  })
+})

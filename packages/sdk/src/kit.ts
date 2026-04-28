@@ -1,9 +1,13 @@
 import { InvalidInputError, NotImplementedError } from './errors.js'
+import { createPairResolver } from './pair-resolver.js'
+import { applyPriceInverse, midPrice18 } from './pricing.js'
+import { type InfoClient, createInfoClient } from './transport/info.js'
 import type { KitConfig } from './types/config.js'
 import { silentLogger } from './types/logger.js'
 import type { Quote, QuoteInput, SwapInput, SwapResult } from './types/swap.js'
 
 const DEFAULT_SLIPPAGE_BPS = 20
+const QUOTE_TTL_MS = 30_000
 
 export interface UsdhKit {
   readonly network: KitConfig['network']
@@ -13,12 +17,18 @@ export interface UsdhKit {
 
 /**
  * Create a kit bound to a network and signer. Validates input synchronously.
- * `swap` and `getQuote` throw `NotImplementedError` until execution lands.
+ * `swap` throws `NotImplementedError` until execution lands.
  */
 export function createUsdhKit(config: KitConfig): UsdhKit {
   validateConfig(config)
   const slippageBps = config.slippageBps ?? DEFAULT_SLIPPAGE_BPS
   const logger = config.logger ?? silentLogger
+  const info: InfoClient = createInfoClient({
+    network: config.network,
+    ...(config.fetch !== undefined && { fetch: config.fetch }),
+    ...(config.timeoutMs !== undefined && { timeoutMs: config.timeoutMs }),
+  })
+  const resolvePair = createPairResolver(info)
 
   return {
     network: config.network,
@@ -35,11 +45,23 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     async getQuote(input: QuoteInput): Promise<Quote> {
       validateQuoteInput(input)
+      if (input.from === 'USDT') {
+        throw new NotImplementedError('USDT pricing lands in a follow-up PR')
+      }
       logger.debug('quote.requested', {
         from: input.from,
         amount: input.amount.toString(),
       })
-      throw new NotImplementedError('getQuote() lands in a follow-up PR')
+      const pair = await resolvePair()
+      const book = await info.l2Book(pair.name)
+      const midPrice = midPrice18(book)
+      const estimatedReceived = applyPriceInverse(input.amount, midPrice)
+      return {
+        estimatedReceived,
+        midPrice,
+        pair: pair.name,
+        validUntil: Date.now() + QUOTE_TTL_MS,
+      }
     },
   }
 }

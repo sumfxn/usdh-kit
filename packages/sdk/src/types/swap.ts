@@ -33,10 +33,15 @@ export interface QuoteInput {
 }
 
 export interface Quote {
-  /** Estimated USDH out, smallest unit. */
+  /** Estimated USDH out, smallest unit (6 decimals). */
   estimatedReceived: bigint
-  /** Mid-price snapshot, fixed-point 18 decimals. */
+  /**
+   * Mid-price of the on-pair orderbook, quote-token per base-token in 18 decimals.
+   * For `USDH/USDC` this is USDC per USDH. See `pair`.
+   */
   midPrice: bigint
+  /** Pair name used to derive the quote (e.g. "USDH/USDC"). */
+  pair: string
   /** Quote expiry, milliseconds since epoch. */
   validUntil: number
 }
