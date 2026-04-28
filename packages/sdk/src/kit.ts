@@ -1,3 +1,4 @@
+import { runBridgeToCore } from './bridge.js'
 import { InvalidInputError, NetworkError, NotImplementedError } from './errors.js'
 import { type ResolvedPair, createPairResolver } from './pair-resolver.js'
 import { applyPriceInverse, formatDecimal, midPrice18, parseDecimal } from './pricing.js'
@@ -11,6 +12,7 @@ import {
 } from './transport/exchange.js'
 import { type InfoClient, createInfoClient } from './transport/info.js'
 import type { L2Book } from './transport/types.js'
+import type { BridgeInput, BridgeResult } from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
 import { silentLogger } from './types/logger.js'
@@ -26,6 +28,12 @@ export interface UsdhKit {
   readonly network: KitConfig['network']
   swap(input: SwapInput): Promise<SwapResult>
   getQuote(input: QuoteInput): Promise<Quote>
+  /**
+   * Bridge a stable from HyperEVM to HyperCore by sending the asset's ERC20
+   * to its HyperCore system address. Resolves once HyperCore credits the
+   * deposit (poll, default timeout 30s). Requires `KitConfig.evmWallet`.
+   */
+  bridgeToCore(input: BridgeInput): Promise<BridgeResult>
 }
 
 /**
@@ -110,6 +118,18 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       }
 
       return finalizeFill(status, mid, logger)
+    },
+
+    async bridgeToCore(input: BridgeInput): Promise<BridgeResult> {
+      return runBridgeToCore(
+        { ...input, user: config.signer.address },
+        {
+          info,
+          evmWallet: config.evmWallet,
+          network: config.network,
+          logger,
+        },
+      )
     },
 
     async getQuote(input: QuoteInput): Promise<Quote> {

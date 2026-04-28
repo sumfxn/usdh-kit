@@ -40,3 +40,21 @@ export interface L2Book {
   /** [bids, asks], best-first. */
   levels: [L2Level[], L2Level[]]
 }
+
+/** One row of `spotClearinghouseState.balances`. */
+export interface SpotBalance {
+  /** Token name (e.g. "USDC"). */
+  coin: string
+  /** Token id (e.g. "0x6d1e..."). */
+  token: number
+  /** Total balance as decimal string in HC native `weiDecimals`. */
+  total: string
+  /** Held in open orders, decimal string. */
+  hold: string
+  /** Entry notional, decimal string. */
+  entryNtl: string
+}
+
+export interface SpotClearinghouseState {
+  balances: SpotBalance[]
+}
