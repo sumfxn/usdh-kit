@@ -52,6 +52,28 @@ importers:
         specifier: 5.7.2
         version: 5.7.2
 
+  apps/examples/treasury-rebalance:
+    dependencies:
+      dotenv:
+        specifier: 16.4.7
+        version: 16.4.7
+      usdh-kit:
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+      viem:
+        specifier: 2.21.55
+        version: 2.21.55(typescript@5.7.2)
+    devDependencies:
+      '@types/node':
+        specifier: 22.10.2
+        version: 22.10.2
+      tsx:
+        specifier: 4.19.2
+        version: 4.19.2
+      typescript:
+        specifier: 5.7.2
+        version: 5.7.2
+
   packages/sdk:
     dependencies:
       '@noble/hashes':
