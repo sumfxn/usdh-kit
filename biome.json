@@ -64,7 +64,7 @@
   },
   "overrides": [
     {
-      "include": ["apps/examples/**"],
+      "include": ["apps/examples/**", "apps/demo/**"],
       "linter": {
         "rules": {
           "complexity": {
