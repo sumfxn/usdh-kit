@@ -9,7 +9,7 @@ import { config } from 'dotenv'
 import { http, type Hex, createWalletClient, defineChain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
-import { type EvmWallet, type Signer, createUsdhKit } from 'usdh-kit'
+import { type EvmWallet, type Signer, createUsdhKit } from '@usdh-kit/sdk'
 
 config()
 

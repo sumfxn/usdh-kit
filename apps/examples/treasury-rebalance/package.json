@@ -8,8 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@usdh-kit/sdk": "workspace:*",
     "dotenv": "16.4.7",
-    "usdh-kit": "workspace:*",
     "viem": "2.21.55"
   },
   "devDependencies": {

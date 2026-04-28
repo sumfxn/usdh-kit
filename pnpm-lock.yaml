@@ -35,6 +35,9 @@ importers:
       '@tanstack/react-query':
         specifier: 5.62.7
         version: 5.62.7(react@19.0.0)
+      '@usdh-kit/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       connectkit:
         specifier: 1.8.2
         version: 1.8.2(@babel/core@7.29.0)(@tanstack/react-query@5.62.7(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-is@16.13.1)(react@19.0.0)(viem@2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10))(wagmi@2.14.6(@tanstack/query-core@5.62.7)(@tanstack/react-query@5.62.7(react@19.0.0))(@types/react@19.0.1)(bufferutil@4.1.0)(react@19.0.0)(typescript@5.7.2)(utf-8-validate@5.0.10)(viem@2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10)))
@@ -47,9 +50,6 @@ importers:
       react-dom:
         specifier: 19.0.0
         version: 19.0.0(react@19.0.0)
-      usdh-kit:
-        specifier: workspace:*
-        version: link:../../packages/sdk
       viem:
         specifier: 2.21.55
         version: 2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10)
@@ -81,12 +81,12 @@ importers:
 
   apps/examples/node-swap:
     dependencies:
+      '@usdh-kit/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
       dotenv:
         specifier: 16.4.7
         version: 16.4.7
-      usdh-kit:
-        specifier: workspace:*
-        version: link:../../../packages/sdk
       viem:
         specifier: 2.21.55
         version: 2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10)
@@ -103,15 +103,15 @@ importers:
 
   apps/examples/payment-webhook:
     dependencies:
+      '@usdh-kit/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
       dotenv:
         specifier: 16.4.7
         version: 16.4.7
       stripe:
         specifier: 17.5.0
         version: 17.5.0
-      usdh-kit:
-        specifier: workspace:*
-        version: link:../../../packages/sdk
       viem:
         specifier: 2.21.55
         version: 2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10)
@@ -128,12 +128,12 @@ importers:
 
   apps/examples/treasury-rebalance:
     dependencies:
+      '@usdh-kit/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
       dotenv:
         specifier: 16.4.7
         version: 16.4.7
-      usdh-kit:
-        specifier: workspace:*
-        version: link:../../../packages/sdk
       viem:
         specifier: 2.21.55
         version: 2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10)

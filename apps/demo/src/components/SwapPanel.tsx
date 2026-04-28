@@ -1,7 +1,7 @@
 'use client'
 
+import type { Quote } from '@usdh-kit/sdk'
 import { useState } from 'react'
-import type { Quote } from 'usdh-kit'
 import { useAccount } from 'wagmi'
 
 import type { HyperNetwork } from '../lib/chains'

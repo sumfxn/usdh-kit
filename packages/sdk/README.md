@@ -1,12 +1,12 @@
-# usdh-kit
+# @usdh-kit/sdk
 
 [![CI](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/usdh-kit?style=flat&color=000000)](https://www.npmjs.com/package/usdh-kit)
+[![npm](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-000000.svg)](../../LICENSE)
 
 TypeScript SDK to swap stablecoins (USDC, USDT) into USDH on Hyperliquid.
 
-USDH is the native stablecoin on Hyperliquid, issued by Bridge and designed by Native Markets, with 50% of reserve revenue routed to the Hyperliquid Assistance Fund. `usdh-kit` ships the retail-side plumbing (pair resolution, signing, transport) so apps and bots can convert into USDH without writing the Hyperliquid action layer themselves.
+USDH is the native stablecoin on Hyperliquid, issued by Bridge and designed by Native Markets, with 50% of reserve revenue routed to the Hyperliquid Assistance Fund. `@usdh-kit/sdk` ships the retail-side plumbing (pair resolution, signing, transport) so apps and bots can convert into USDH without writing the Hyperliquid action layer themselves.
 
 ## Status
 
@@ -19,13 +19,13 @@ Pre-release. Public API is unstable until `1.0.0`.
 ## Install
 
 ```sh
-pnpm add usdh-kit
+pnpm add @usdh-kit/sdk
 ```
 
 ## Quickstart
 
 ```ts
-import { createUsdhKit, SlippageExceededError } from 'usdh-kit'
+import { createUsdhKit, SlippageExceededError } from '@usdh-kit/sdk'
 
 const kit = createUsdhKit({ network: 'mainnet', signer })
 

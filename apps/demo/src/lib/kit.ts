@@ -1,6 +1,6 @@
 'use client'
 
-import { type EvmWallet, type Signer, createUsdhKit } from 'usdh-kit'
+import { type EvmWallet, type Signer, createUsdhKit } from '@usdh-kit/sdk'
 import { useAccount, useSignMessage, useSignTypedData, useWalletClient } from 'wagmi'
 
 import type { HyperNetwork } from './chains'
