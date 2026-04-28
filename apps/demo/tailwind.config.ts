@@ -1,7 +1,8 @@
+import widgetContent from '@usdh-kit/widget/tailwind-content'
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
-  content: ['./src/**/*.{ts,tsx}'],
+  content: ['./src/**/*.{ts,tsx}', ...widgetContent],
   theme: {
     extend: {
       fontFamily: {

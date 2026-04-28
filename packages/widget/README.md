@@ -34,15 +34,43 @@ function CustomSwap() {
 
 ## Styling
 
-The component ships with Tailwind utility classes inline. Your project must run Tailwind for these to render. A standalone CSS bundle (no Tailwind required) lands in a follow-up.
+Pick one of the two paths depending on whether your app already runs Tailwind.
+
+### Already using Tailwind v3
+
+Spread the widget's content paths into your Tailwind config so its utility classes are scanned and emitted alongside your own:
+
+```ts
+// tailwind.config.ts
+import widgetContent from '@usdh-kit/widget/tailwind-content'
+import type { Config } from 'tailwindcss'
+
+const config: Config = {
+  content: ['./src/**/*.{ts,tsx}', ...widgetContent],
+}
+
+export default config
+```
+
+Tailwind v3 does not deep-merge `content` arrays from presets, which is why we ship paths as a plain array instead of a preset object.
+
+### Not using Tailwind
+
+Import the pre-compiled stylesheet once at your app entry. It's about 3 KB and contains only the utility classes the widget renders.
+
+```ts
+import '@usdh-kit/widget/styles.css'
+```
 
 ## Props
 
 ```ts
 type USDHSwapProps = {
-  network?: 'mainnet' | 'testnet' // defaults to 'mainnet'
+  network: 'mainnet' | 'testnet'
 }
 ```
+
+`network` is required. Pass `'mainnet'` for production swaps and `'testnet'` for the Hyperliquid testnet.
 
 ## License
 

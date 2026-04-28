@@ -18,7 +18,7 @@ interface FillResult {
 }
 
 export type USDHSwapProps = {
-  network?: HyperNetwork
+  network: HyperNetwork
 }
 
 function Spinner() {
@@ -35,7 +35,7 @@ function Spinner() {
   )
 }
 
-export function USDHSwap({ network = 'mainnet' }: USDHSwapProps) {
+export function USDHSwap({ network }: USDHSwapProps) {
   const { isConnected } = useAccount()
   const kit = useUsdhKit(network)
 
