@@ -1,6 +1,6 @@
 {
   "name": "usdh-kit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "TypeScript SDK to swap stablecoins into USDH on Hyperliquid",
   "license": "MIT",
   "author": "sumfxn",
@@ -13,7 +13,15 @@
   "bugs": {
     "url": "https://github.com/sumfxn/usdh-kit/issues"
   },
-  "keywords": ["hyperliquid", "usdh", "stablecoin", "swap", "defi", "sdk", "typescript"],
+  "keywords": [
+    "hyperliquid",
+    "usdh",
+    "stablecoin",
+    "swap",
+    "defi",
+    "sdk",
+    "typescript"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -31,7 +39,11 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "sideEffects": false,
   "engines": {
     "node": ">=18.18.0"
