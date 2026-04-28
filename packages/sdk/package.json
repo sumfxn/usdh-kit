@@ -49,6 +49,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "22.10.2",
     "tsup": "8.3.5",
     "vitest": "2.1.8"
   }
