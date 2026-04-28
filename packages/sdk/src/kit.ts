@@ -11,7 +11,6 @@ import {
   isOrderResponse,
 } from './transport/exchange.js'
 import { type InfoClient, createInfoClient } from './transport/info.js'
-import type { L2Book } from './transport/types.js'
 import type { BridgeInput, BridgeResult } from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
@@ -82,7 +81,6 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       const pair = await resolvePair()
       const book = await info.l2Book(pair.name)
       const mid = midPrice18(book)
-      assertBookHasSides(book)
 
       const limitPrice18 = (mid * (10_000n + BigInt(slippageBps))) / 10_000n
       const limitPriceStr = formatDecimal(limitPrice18, PRICE_DECIMALS, pair.quoteWeiDecimals)
@@ -152,13 +150,6 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
         validUntil: Date.now() + QUOTE_TTL_MS,
       }
     },
-  }
-}
-
-function assertBookHasSides(book: L2Book): void {
-  const [bids, asks] = book.levels
-  if (bids[0] === undefined || asks[0] === undefined) {
-    throw new NetworkError(`orderbook ${book.coin} is missing a side`)
   }
 }
 

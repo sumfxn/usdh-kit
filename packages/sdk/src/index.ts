@@ -9,7 +9,6 @@ export {
   NetworkError,
   NotImplementedError,
   SigningError,
-  SlippageExceededError,
   UsdhKitError,
 } from './errors.js'
 
