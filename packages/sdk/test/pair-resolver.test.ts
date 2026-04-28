@@ -54,6 +54,16 @@ describe('findUsdhUsdcPair', () => {
   it('throws when no pair links the two tokens', () => {
     expect(() => findUsdhUsdcPair({ ...meta, universe: [] })).toThrow(NetworkError)
   })
+
+  it('reads pair.index from spotMeta, not the array position', () => {
+    const mainnetLike: SpotMeta = {
+      ...meta,
+      universe: [{ name: 'USDH/USDC', tokens: [1, 0], index: 230, isCanonical: true }],
+    }
+    const resolved = findUsdhUsdcPair(mainnetLike)
+    expect(resolved.index).toBe(230)
+    expect(resolved.assetIndex).toBe(10_230)
+  })
 })
 
 describe('createPairResolver', () => {

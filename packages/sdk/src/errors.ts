@@ -21,18 +21,6 @@ export class InsufficientBalanceError extends UsdhKitError {
   }
 }
 
-/** Realised slippage exceeded tolerance. The order is canceled. */
-export class SlippageExceededError extends UsdhKitError {
-  override readonly name = 'SlippageExceededError'
-
-  constructor(
-    public readonly toleranceBps: number,
-    public readonly observedBps: number,
-  ) {
-    super(`Slippage ${observedBps}bps exceeded tolerance ${toleranceBps}bps`)
-  }
-}
-
 /** HTTP or websocket transport error. */
 export class NetworkError extends UsdhKitError {
   override readonly name = 'NetworkError'

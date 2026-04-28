@@ -25,20 +25,19 @@ pnpm add @usdh-kit/sdk
 ## Quickstart
 
 ```ts
-import { createUsdhKit, SlippageExceededError } from '@usdh-kit/sdk'
+import { createUsdhKit } from '@usdh-kit/sdk'
 
-const kit = createUsdhKit({ network: 'mainnet', signer })
+const kit = createUsdhKit({ network: 'mainnet', signer, slippageBps: 30 })
 
-try {
-  const result = await kit.swap({ from: 'USDC', amount: 1_000_000n })
-  console.log(`got ${result.received} USDH for ${result.spent} USDC`)
-} catch (err) {
-  if (err instanceof SlippageExceededError) {
-    // tighten slippageBps and retry, or surface to the user
-  }
-  throw err
-}
+const result = await kit.swap({ from: 'USDC', amount: 1_000_000n })
+console.log(`got ${result.received} USDH for ${result.spent} USDC`)
+console.log(`realised slippage: ${result.slippageBps}bps`)
 ```
+
+`swap()` submits an IOC limit order priced `slippageBps` above the mid (max
+slippage is enforced pre-fill by Hyperliquid's matcher). The returned
+`result.slippageBps` is the realised slippage versus mid; tighten the tolerance
+and retry if it's higher than you expected.
 
 ## Quote a swap
 
