@@ -1,5 +1,6 @@
 import { ConnectButton } from '../components/ConnectButton'
 import { ConnectionStatus } from '../components/ConnectionStatus'
+import { SwapPanel } from '../components/SwapPanel'
 
 export default function Home() {
   return (
@@ -13,7 +14,9 @@ export default function Home() {
       </header>
       <section className="mt-12 rounded-2xl border border-neutral-800 bg-neutral-950/50 p-8">
         <ConnectionStatus />
-        <p className="mt-6 text-sm text-neutral-500">Swap UI lands in the next PR.</p>
+      </section>
+      <section className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950/50 p-8">
+        <SwapPanel />
       </section>
     </main>
   )
