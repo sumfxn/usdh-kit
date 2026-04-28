@@ -1,6 +1,7 @@
 import { InvalidInputError, NetworkError } from '../errors.js'
+import type { Address } from '../types/hex.js'
 import type { Network } from '../types/network.js'
-import type { L2Book, SpotMeta } from './types.js'
+import type { L2Book, SpotClearinghouseState, SpotMeta } from './types.js'
 
 const ENDPOINTS: Record<Network, string> = {
   mainnet: 'https://api.hyperliquid.xyz/info',
@@ -22,6 +23,7 @@ export type NSigFigs = 2 | 3 | 4 | 5
 export interface InfoClient {
   spotMeta(): Promise<SpotMeta>
   l2Book(coin: string, nSigFigs?: NSigFigs): Promise<L2Book>
+  spotClearinghouseState(user: Address): Promise<SpotClearinghouseState>
 }
 
 export function createInfoClient(config: InfoClientConfig): InfoClient {
@@ -82,6 +84,9 @@ export function createInfoClient(config: InfoClientConfig): InfoClient {
         throw new InvalidInputError('nSigFigs must be 2, 3, 4, or 5')
       }
       return post<L2Book>({ type: 'l2Book', coin, nSigFigs: nSigFigs ?? null })
+    },
+    spotClearinghouseState(user) {
+      return post<SpotClearinghouseState>({ type: 'spotClearinghouseState', user })
     },
   }
 }

@@ -2,8 +2,10 @@ export { createUsdhKit } from './kit.js'
 export type { UsdhKit } from './kit.js'
 
 export {
+  BridgeTimeoutError,
   InsufficientBalanceError,
   InvalidInputError,
+  MissingEvmWalletError,
   NetworkError,
   NotImplementedError,
   SigningError,
@@ -11,7 +13,9 @@ export {
   UsdhKitError,
 } from './errors.js'
 
+export type { BridgeAsset, BridgeInput, BridgeResult } from './types/bridge.js'
 export type { KitConfig } from './types/config.js'
+export type { EvmTransactionRequest, EvmWallet } from './types/evm-wallet.js'
 export type { Address, Hex } from './types/hex.js'
 export type { Logger } from './types/logger.js'
 export { silentLogger } from './types/logger.js'

@@ -1,3 +1,4 @@
+import type { EvmWallet } from './evm-wallet.js'
 import type { Address } from './hex.js'
 import type { Logger } from './logger.js'
 import type { Network } from './network.js'
@@ -8,6 +9,11 @@ export interface KitConfig {
   network: Network
   /** Wallet abstraction. See `Signer`. */
   signer: Signer
+  /**
+   * Optional HyperEVM wallet for `bridgeToCore`. Only required when bridging
+   * stables from HyperEVM to HyperCore; `swap`/`getQuote` do not use it.
+   */
+  evmWallet?: EvmWallet
   /**
    * Default slippage tolerance in basis points (1 bp = 0.01%).
    * @default 20

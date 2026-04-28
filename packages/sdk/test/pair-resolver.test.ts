@@ -61,6 +61,7 @@ describe('createPairResolver', () => {
     return {
       spotMeta: vi.fn(async () => meta),
       l2Book: vi.fn(),
+      spotClearinghouseState: vi.fn(),
     }
   }
 
