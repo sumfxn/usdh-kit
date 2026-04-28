@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { Quote } from 'usdh-kit'
 import { useAccount } from 'wagmi'
 
+import type { HyperNetwork } from '../lib/chains'
 import { formatUnits, parseUnits } from '../lib/format'
 import { useUsdhKit } from '../lib/kit'
 
@@ -16,9 +17,23 @@ interface FillResult {
   receivedUsdh: bigint
 }
 
-export function SwapPanel() {
+function Spinner() {
+  return (
+    <svg className="inline h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path
+        d="M12 2a10 10 0 0 1 10 10"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+export function SwapPanel({ network }: { network: HyperNetwork }) {
   const { isConnected } = useAccount()
-  const kit = useUsdhKit('testnet')
+  const kit = useUsdhKit(network)
 
   const [amountStr, setAmountStr] = useState('1')
   const [phase, setPhase] = useState<Phase>('idle')
@@ -27,7 +42,11 @@ export function SwapPanel() {
   const [error, setError] = useState<string | null>(null)
 
   if (!isConnected || !kit) {
-    return <p className="text-sm text-neutral-500">Connect a wallet on HyperEVM Testnet to swap.</p>
+    return (
+      <p className="text-sm text-neutral-500">
+        Connect a wallet on HyperEVM {network === 'mainnet' ? 'Mainnet' : 'Testnet'} to swap.
+      </p>
+    )
   }
 
   function reset() {
@@ -121,9 +140,15 @@ export function SwapPanel() {
             type="button"
             onClick={getQuote}
             disabled={busy}
-            className="rounded-lg border border-neutral-800 px-4 py-3 text-sm font-medium hover:bg-neutral-900 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-neutral-800 px-4 py-3 text-sm font-medium hover:bg-neutral-900 disabled:opacity-50"
           >
-            {phase === 'quoting' ? 'Quoting…' : 'Get quote'}
+            {phase === 'quoting' ? (
+              <>
+                <Spinner /> Quoting
+              </>
+            ) : (
+              'Get quote'
+            )}
           </button>
         </div>
       </div>
@@ -144,13 +169,19 @@ export function SwapPanel() {
         type="button"
         onClick={bridgeAndSwap}
         disabled={busy}
-        className="w-full rounded-lg bg-neutral-100 px-4 py-3 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-100 px-4 py-3 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
       >
-        {phase === 'bridging'
-          ? 'Bridging to HyperCore…'
-          : phase === 'swapping'
-            ? 'Swapping…'
-            : 'Bridge and swap'}
+        {phase === 'bridging' ? (
+          <>
+            <Spinner /> Bridging to HyperCore
+          </>
+        ) : phase === 'swapping' ? (
+          <>
+            <Spinner /> Swapping
+          </>
+        ) : (
+          'Bridge and swap'
+        )}
       </button>
 
       {error && (
