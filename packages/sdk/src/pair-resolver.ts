@@ -7,9 +7,17 @@ export interface ResolvedPair {
   name: string
   /** Index into `spotMeta.universe`. */
   index: number
+  /** Asset index used in `/exchange` order actions: `10000 + index` for spot. */
+  assetIndex: number
   /** Token indices [base, quote]. */
   tokens: [number, number]
+  /** Base token size decimals (HL `szDecimals`). */
+  baseSzDecimals: number
+  /** Quote token wei decimals (HL `weiDecimals` of the quote token). */
+  quoteWeiDecimals: number
 }
+
+const SPOT_ASSET_OFFSET = 10000
 
 /**
  * Find the canonical USDH/USDC pair in spotMeta. Tokens are matched by name
@@ -32,7 +40,19 @@ export function findUsdhUsdcPair(meta: SpotMeta): ResolvedPair {
   if (!pair) {
     throw new NetworkError('USDH/USDC pair not found in spotMeta')
   }
-  return { name: pair.name, index: pair.index, tokens: pair.tokens }
+  const baseToken = meta.tokens[pair.tokens[0]]
+  const quoteToken = meta.tokens[pair.tokens[1]]
+  if (baseToken === undefined || quoteToken === undefined) {
+    throw new NetworkError('pair token indices do not resolve in spotMeta')
+  }
+  return {
+    name: pair.name,
+    index: pair.index,
+    assetIndex: SPOT_ASSET_OFFSET + pair.index,
+    tokens: pair.tokens,
+    baseSzDecimals: baseToken.szDecimals,
+    quoteWeiDecimals: quoteToken.weiDecimals,
+  }
 }
 
 /**
