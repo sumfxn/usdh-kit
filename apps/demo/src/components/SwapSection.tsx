@@ -1,10 +1,9 @@
 'use client'
 
+import { type HyperNetwork, USDHSwap } from '@usdh-kit/widget'
 import { useState } from 'react'
 
-import type { HyperNetwork } from '../lib/chains'
 import { ConnectionStatus } from './ConnectionStatus'
-import { SwapPanel } from './SwapPanel'
 
 export function SwapSection() {
   const [network, setNetwork] = useState<HyperNetwork>('testnet')
@@ -30,7 +29,7 @@ export function SwapSection() {
         </div>
       </div>
       <section className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950/50 p-8">
-        <SwapPanel network={network} />
+        <USDHSwap network={network} />
       </section>
     </>
   )

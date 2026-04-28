@@ -3,13 +3,9 @@
 import { type EvmWallet, type Signer, createUsdhKit } from '@usdh-kit/sdk'
 import { useAccount, useSignMessage, useSignTypedData, useWalletClient } from 'wagmi'
 
-import type { HyperNetwork } from './chains'
+import type { HyperNetwork } from './types.js'
 
-/**
- * React hook returning a `UsdhKit` instance bound to the connected wallet.
- * Returns `null` until a wallet connects.
- */
-export function useUsdhKit(network: HyperNetwork = 'testnet') {
+export function useUsdhKit(network: HyperNetwork = 'mainnet') {
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
   const { signTypedDataAsync } = useSignTypedData()

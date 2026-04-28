@@ -18,8 +18,3 @@ export const hyperEvmTestnet = defineChain({
   },
   testnet: true,
 })
-
-export type HyperNetwork = 'mainnet' | 'testnet'
-
-export const chainForNetwork = (network: HyperNetwork) =>
-  network === 'mainnet' ? hyperEvmMainnet : hyperEvmTestnet
