@@ -1,5 +1,3 @@
-import type { Hex } from './hex.js'
-
 /** Stablecoins accepted as swap input. */
 export type SourceStable = 'USDC' | 'USDT'
 
@@ -13,17 +11,15 @@ export interface SwapInput {
 }
 
 export interface SwapResult {
-  /** Hyperliquid order/fill identifier. */
+  /** Hyperliquid order id as decimal string. */
   orderId: string
-  /** Hex transaction-id-equivalent for the HL action submission. */
-  txHash: Hex
   /** USDH received, smallest unit (6 decimals). */
   received: bigint
   /** Source spent, smallest unit. */
   spent: bigint
-  /** Effective fill price as USDH per source, fixed-point 18 decimals. */
+  /** Effective fill price (quote-per-base), fixed-point 18 decimals. */
   price: bigint
-  /** Realised slippage in basis points. */
+  /** Realised slippage in basis points (absolute value vs mid-price). */
   slippageBps: number
 }
 

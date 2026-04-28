@@ -59,3 +59,30 @@ export function applyPriceInverse(amount: bigint, pricePerBase18: bigint): bigin
   }
   return (amount * TEN_18) / pricePerBase18
 }
+
+/**
+ * Format a fixed-point bigint as a decimal string with no trailing zeros.
+ * `formatDecimal(1_000_100n, 6)` -> "1.0001". Returns "0" for zero.
+ * If `maxFracDigits` is provided, the fractional part is truncated.
+ */
+export function formatDecimal(value: bigint, decimals: number, maxFracDigits?: number): string {
+  if (decimals < 0 || !Number.isInteger(decimals)) {
+    throw new InvalidInputError('decimals must be a non-negative integer')
+  }
+  if (maxFracDigits !== undefined && (maxFracDigits < 0 || !Number.isInteger(maxFracDigits))) {
+    throw new InvalidInputError('maxFracDigits must be a non-negative integer')
+  }
+  if (value < 0n) {
+    return `-${formatDecimal(-value, decimals, maxFracDigits)}`
+  }
+  if (value === 0n) return '0'
+  if (decimals === 0) return value.toString()
+  const padded = value.toString().padStart(decimals + 1, '0')
+  const intPart = padded.slice(0, -decimals)
+  let fracPart = padded.slice(-decimals)
+  if (maxFracDigits !== undefined && fracPart.length > maxFracDigits) {
+    fracPart = fracPart.slice(0, maxFracDigits)
+  }
+  fracPart = fracPart.replace(/0+$/, '')
+  return fracPart === '' ? intPart : `${intPart}.${fracPart}`
+}

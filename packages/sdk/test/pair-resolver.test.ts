@@ -28,11 +28,14 @@ const meta: SpotMeta = {
 }
 
 describe('findUsdhUsdcPair', () => {
-  it('finds the canonical pair', () => {
+  it('finds the canonical pair with token decimals', () => {
     expect(findUsdhUsdcPair(meta)).toEqual({
       name: 'USDH/USDC',
       index: 0,
+      assetIndex: 10000,
       tokens: [1, 0],
+      baseSzDecimals: 8,
+      quoteWeiDecimals: 8,
     })
   })
 
