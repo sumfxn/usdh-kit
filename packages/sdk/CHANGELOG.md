@@ -1,4 +1,4 @@
-# usdh-kit
+# @usdh-kit/sdk
 
 ## 0.1.0
 

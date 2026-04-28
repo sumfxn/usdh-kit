@@ -11,7 +11,7 @@ import Stripe from 'stripe'
 import type { Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
-import { type Signer, createUsdhKit } from 'usdh-kit'
+import { type Signer, createUsdhKit } from '@usdh-kit/sdk'
 
 config()
 

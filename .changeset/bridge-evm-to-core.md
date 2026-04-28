@@ -1,5 +1,5 @@
 ---
-'usdh-kit': minor
+'@usdh-kit/sdk': minor
 ---
 
 feat(sdk): bridgeToCore for HyperEVM stables to HyperCore
