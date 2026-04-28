@@ -1,4 +1,3 @@
-/** Format a bigint amount in `decimals` precision as a human decimal string. */
 export function formatUnits(amount: bigint, decimals: number): string {
   const negative = amount < 0n
   const abs = negative ? -amount : amount
@@ -10,7 +9,6 @@ export function formatUnits(amount: bigint, decimals: number): string {
   return `${negative ? '-' : ''}${intPart}.${fracStr}`
 }
 
-/** Parse a human decimal string to a bigint with `decimals` precision. */
 export function parseUnits(value: string, decimals: number): bigint {
   const trimmed = value.trim()
   if (trimmed === '' || !/^-?\d*(?:\.\d*)?$/.test(trimmed)) {

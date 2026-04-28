@@ -38,6 +38,9 @@ importers:
       '@usdh-kit/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@usdh-kit/widget':
+        specifier: workspace:*
+        version: link:../../packages/widget
       connectkit:
         specifier: 1.8.2
         version: 1.8.2(@babel/core@7.29.0)(@tanstack/react-query@5.62.7(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-is@16.13.1)(react@19.0.0)(viem@2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10))(wagmi@2.14.6(@tanstack/query-core@5.62.7)(@tanstack/react-query@5.62.7(react@19.0.0))(@types/react@19.0.1)(bufferutil@4.1.0)(react@19.0.0)(typescript@5.7.2)(utf-8-validate@5.0.10)(viem@2.21.55(bufferutil@4.1.0)(typescript@5.7.2)(utf-8-validate@5.0.10)))
