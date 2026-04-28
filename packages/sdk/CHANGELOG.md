@@ -1,0 +1,15 @@
+# usdh-kit
+
+## 0.1.0
+
+### Minor Changes
+
+- 15f3b80: Internal Hyperliquid `/exchange` transport. `createExchangeClient` posts a signed L1 action with nonce and optional `vaultAddress` to the exchange endpoint, validates the top-level `{ status, response }` envelope, and returns the parsed response. `OrderResponse` and `isOrderResponse` runtime guard typed for the `order` action. `NetworkError` wraps HTTP, transport, JSON, and timeout failures.
+- 7942cbc: Implement `getQuote()` for `USDC -> USDH`. Resolves the spot pair from `spotMeta` (cached for the lifetime of the kit), reads the L2 book, and computes a mid-price quote with a 30-second validity window. `KitConfig` now accepts optional `fetch` and `timeoutMs`. USDT pricing throws `NotImplementedError` until the double-hop lands. `Quote` adds a `pair` field naming the spot pair used.
+- 84fa2af: Internal Hyperliquid `/info` client. Read-only `spotMeta` and `l2Book` queries via native `fetch`, with `NetworkError` wrapping HTTP, transport, and JSON parse failures. Used by upcoming `getQuote()` implementation.
+- f38c6c9: Internal msgpack encoder for Hyperliquid L1 actions. Supports nil, boolean, integer numbers, bigint, string, array, and plain-object map. Maps preserve insertion order, which HL signing requires. Rejects floats, NaN, infinity, out-of-range bigints, and non-plain objects (Date, Map, Set, etc.). Used by the upcoming swap signing layer.
+- 0c1db72: Internal HL signing layer: `signL1Action({ signer, action, nonce, network, vaultAddress? })` produces an EIP-712 signature `{ r, s, v }` for any L1 action. Computes the action hash by msgpack-encoding the action, appending the nonce big-endian and the vault marker, then keccak256, and wraps it in HL's phantom-agent typed data (chainId 1337). Adds `@noble/hashes` as the only runtime dep. Used by upcoming `swap()` execution.
+- 49c5354: Initial SDK skeleton. Public types (Signer, KitConfig, SwapInput, SwapResult, Quote, Logger), typed error hierarchy rooted at `UsdhKitError`, and `createUsdhKit()` factory with input validation. Execution lands in follow-up PRs.
+- b7676de: Implement `swap()` end-to-end for `USDC -> USDH`. Reads the L2 orderbook, computes a slippage-tolerant aggressive limit price (`mid * (1 + slippageBps/10000)`), builds a Market IOC order action, signs via the configured `Signer`, submits to `/exchange`, parses the fill, and returns a `SwapResult` with the realised slippage in bps. The slippage check is now **pre-fill** (HL rejects bad prices itself) and the realised value is reported on the result without throwing. `NetworkError` wraps transport and per-order errors. `NotImplementedError` for USDT until the double-hop lands.
+
+  `SwapResult.txHash` removed (HL L1 actions have no Ethereum tx hash); `orderId` is the canonical identifier. `ResolvedPair` exposes `assetIndex`, `baseSzDecimals`, and `quoteWeiDecimals` so the kit formats price and size strings against the actual pair precision instead of a hardcoded constant. Nonces are emitted monotonically across concurrent calls. `formatDecimal` accepts an optional `maxFracDigits` cap.
