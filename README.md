@@ -4,17 +4,28 @@
 [![npm](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
 
-TypeScript SDK to swap stablecoins (USDC, USDT) into USDH on Hyperliquid.
+TypeScript SDK to swap stablecoins into USDH on Hyperliquid.
 
 USDH is the native stablecoin on Hyperliquid, issued by Bridge and designed by Native Markets, with 50% of reserve revenue routed to the Hyperliquid Assistance Fund. `@usdh-kit/sdk` ships the retail-side plumbing (pair resolution, signing, transport) so apps and bots can convert into USDH without writing the Hyperliquid action layer themselves.
+
+`@usdh-kit/widget` ships an embeddable React component (light, dark and auto theming) on top of the SDK so dapps can drop in a swap form in a few lines.
 
 ## Status
 
 Pre-release. Public API is unstable until `1.0.0`.
 
-* `getQuote()` is wired and reads live HL orderbook
-* `swap()` validates input but throws `NotImplementedError` until the signing layer lands
-* USDT pricing throws `NotImplementedError` until the USDT/USDC/USDH double-hop lands
+What works today:
+
+* `getQuote()` and `swap()` for `USDC → USDH` end to end (signing + msgpack + IOC limit submission)
+* `bridgeToCore()` for moving USDC from HyperEVM to HyperCore, with credit polling
+* React widget with built-in source-chain selection (HyperEVM bridge or direct HyperCore swap), friendly errors, and full theming via CSS variables
+
+Deferred to follow-up PRs:
+
+* USDT pricing and swap (USDT/USDC/USDH double-hop)
+* Reverse direction (USDH → USDC) and `bridgeFromCore`
+* Multi-chain source via LiFi/Squid (Ethereum, Arbitrum, Base)
+* `bridgeAndSwap` single-call helper
 
 ## Install
 
@@ -53,9 +64,13 @@ if (Date.now() < quote.validUntil) {
 
 ## Features (V1)
 
-* `USDC -> USDH` quote and swap via the canonical HL spot pair
+* `USDC → USDH` quote and swap via the canonical HL spot pair
+* HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
 * Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
+* Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book) for consumers building custom UIs
 * Typed error hierarchy rooted at `UsdhKitError` for clean `instanceof` handling
+* `friendlyError()` helper to map SDK errors to short, copy-safe strings
+* React widget (`@usdh-kit/widget`) with light, dark and auto theming (WCAG AA defaults, CSS variables for integrator overrides)
 * npm provenance on every release
 * Mainnet and testnet support, no signing on read paths
 
