@@ -3,24 +3,22 @@ import { SwapSection } from '../components/SwapSection'
 
 export default function Home() {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 sm:py-24">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">usdh-kit</h1>
-          <p className="mt-2 text-neutral-400 sm:mt-3">Swap stables into USDH on Hyperliquid.</p>
-        </div>
+    <main className="mx-auto w-full max-w-[480px] px-5 py-10 sm:py-16">
+      <header className="flex items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold tracking-tight text-neutral-100">usdh-kit</h1>
         <ConnectButton />
       </header>
-      <div className="mt-10 sm:mt-12">
+      <p className="mt-1.5 text-sm text-neutral-400">Swap stables into USDH on Hyperliquid.</p>
+      <div className="mt-6">
         <SwapSection />
       </div>
-      <footer className="mt-16 flex justify-between text-xs text-neutral-600">
+      <footer className="mt-10 flex items-center justify-between text-[11px] text-neutral-600">
         <span>Open source, MIT.</span>
         <a
           href="https://github.com/sumfxn/usdh-kit"
           target="_blank"
           rel="noopener noreferrer"
-          className="underline hover:text-neutral-400"
+          className="font-mono underline-offset-2 transition hover:text-neutral-400 hover:underline"
         >
           github.com/sumfxn/usdh-kit
         </a>
