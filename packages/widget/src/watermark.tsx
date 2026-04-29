@@ -6,14 +6,14 @@ const LIQUIDTERMINAL_URL = 'https://liquidterminal.xyz'
 
 export function Watermark() {
   return (
-    <p className="flex items-center justify-between gap-2 text-[11px] text-neutral-500">
+    <p className="flex items-center justify-between gap-2 text-[11px] text-usdh-text-soft">
       <a
         href={KIT_URL}
         target="_blank"
         rel="noopener noreferrer"
-        className="transition hover:text-neutral-300"
+        className="transition hover:text-usdh-text-muted"
       >
-        Powered by <span className="font-mono text-neutral-300">usdh-kit</span>
+        Powered by <span className="font-mono text-usdh-text-muted">usdh-kit</span>
       </a>
       <span className="flex items-center gap-2.5">
         <a
@@ -22,7 +22,7 @@ export function Watermark() {
           rel="noopener noreferrer"
           aria-label="Sentral"
           title="Sentral"
-          className="flex h-4 items-center text-neutral-200 opacity-50 transition hover:opacity-100"
+          className="flex h-4 items-center text-usdh-text opacity-60 transition hover:opacity-100"
         >
           <SentralMark />
         </a>
@@ -32,7 +32,7 @@ export function Watermark() {
           rel="noopener noreferrer"
           aria-label="LiquidTerminal"
           title="LiquidTerminal"
-          className="flex h-4 items-center opacity-50 transition hover:opacity-100"
+          className="flex h-4 items-center text-usdh-text opacity-60 transition hover:opacity-100"
         >
           <LiquidTerminalMark />
         </a>

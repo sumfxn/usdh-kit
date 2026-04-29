@@ -121,9 +121,12 @@ export function SentralMark(props: SVGProps<SVGSVGElement>) {
 }
 
 /**
- * LiquidTerminal monogram, official mark. Original brand colors preserved.
- * viewBox tightened around the visible content (mountain + droplet + dash) so
- * the rendered icon optical weight matches the Sentral mark next to it.
+ * LiquidTerminal monogram, official mark. Uses `currentColor` so the icon
+ * tints with the surrounding text color (works in both light and dark
+ * mode). Brand droplet blue is kept slightly distinct via opacity so the
+ * mountain/dash and droplet remain visually separable on either theme.
+ * viewBox tightened around the visible content (mountain + droplet + dash)
+ * so the rendered icon optical weight matches the Sentral mark next to it.
  */
 export function LiquidTerminalMark(props: SVGProps<SVGSVGElement>) {
   return (
@@ -137,19 +140,20 @@ export function LiquidTerminalMark(props: SVGProps<SVGSVGElement>) {
     >
       <polygon
         points="462.14 405.28 437.5 405.28 386.14 311.63 310.14 173.05 234.15 311.63 182.79 405.28 158.15 405.28 234.15 266.7 310.14 128.13 386.14 266.7 462.14 405.28"
-        fill="#fff"
-        stroke="#fff"
+        fill="currentColor"
+        stroke="currentColor"
         strokeWidth="28.92"
         strokeMiterlimit="10"
       />
       <path
         d="m478.82,491.36c0,89.4-75.3,161.86-168.17,161.86s-168.18-72.46-168.18-161.86h26.62c0,74.76,62.98,135.35,140.65,135.35s140.63-60.59,140.63-135.35h28.44Z"
-        fill="#93d4ed"
-        stroke="#93d4ed"
+        fill="currentColor"
+        stroke="currentColor"
         strokeWidth="30.43"
         strokeMiterlimit="10"
+        opacity="0.7"
       />
-      <rect x="540.53" y="626.67" width="117" height="45.21" fill="#fff" />
+      <rect x="540.53" y="626.67" width="117" height="45.21" fill="currentColor" />
     </svg>
   )
 }
