@@ -22,7 +22,7 @@ export function Watermark() {
           rel="noopener noreferrer"
           aria-label="Sentral"
           title="Sentral"
-          className="flex h-4 items-center text-usdh-text opacity-50 transition hover:opacity-100"
+          className="flex h-4 items-center text-usdh-text opacity-60 transition hover:opacity-100"
         >
           <SentralMark />
         </a>
@@ -32,7 +32,7 @@ export function Watermark() {
           rel="noopener noreferrer"
           aria-label="LiquidTerminal"
           title="LiquidTerminal"
-          className="flex h-4 items-center opacity-50 transition hover:opacity-100"
+          className="flex h-4 items-center text-usdh-text opacity-60 transition hover:opacity-100"
         >
           <LiquidTerminalMark />
         </a>
