@@ -8,9 +8,10 @@ import { HYPER_EVM_CHAIN_ID, networkLabel } from './chains.js'
 import { formatUnits, parseUnits } from './format.js'
 import { friendlyError } from './friendly-error.js'
 import { ArrowDown, Spinner, SwitchHorizontal, UsdcIcon, UsdhIcon } from './icons.js'
-import type { HyperNetwork, SwapResultPayload } from './types.js'
+import type { HyperNetwork, SwapResultPayload, WidgetTheme } from './types.js'
 import { useUsdcBalances } from './use-balances.js'
 import { useCountdown } from './use-countdown.js'
+import { useEffectiveTheme } from './use-theme.js'
 import { useUsdhKit } from './use-usdh-kit.js'
 import { Watermark } from './watermark.js'
 
@@ -34,6 +35,12 @@ export type USDHSwapProps = {
   hideNetworkToggle?: boolean
   /** Hide the "Powered by usdh-kit" footer. Defaults to false. */
   hideAttribution?: boolean
+  /**
+   * Theme palette. Defaults to `'auto'` (follows the user's system
+   * preference via `prefers-color-scheme`). Set to `'dark'` or `'light'`
+   * to force a specific palette.
+   */
+  theme?: WidgetTheme
   /** Default slippage in basis points (10 = 0.10%). Defaults to 30. */
   defaultSlippageBps?: number
   /** Pre-fill the pay amount as a decimal string. */
@@ -65,11 +72,13 @@ export function USDHSwap(props: USDHSwapProps) {
     network: initialNetwork = 'mainnet',
     hideNetworkToggle = false,
     hideAttribution = false,
+    theme = 'auto',
     defaultSlippageBps = 30,
     defaultAmount = '1',
     onSwapComplete,
   } = props
 
+  const effectiveTheme = useEffectiveTheme(theme)
   const [network, setNetwork] = useState<HyperNetwork>(initialNetwork)
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
@@ -275,11 +284,14 @@ export function USDHSwap(props: USDHSwapProps) {
   }
 
   return (
-    <div className="usdh-widget mx-auto w-full max-w-[480px] rounded-2xl border border-neutral-800/80 bg-neutral-950/70 p-5 shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset] backdrop-blur">
+    <div
+      data-theme={effectiveTheme}
+      className={`usdh-widget mx-auto w-full max-w-[480px] rounded-2xl border border-usdh-border bg-usdh-bg/70 p-5 shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset] backdrop-blur ${effectiveTheme === 'dark' ? 'dark' : ''}`}
+    >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-neutral-200">Swap to USDH</h3>
+        <h3 className="text-sm font-medium text-usdh-text">Swap to USDH</h3>
         {!hideNetworkToggle && (
-          <div className="inline-flex rounded-md border border-neutral-800 p-0.5 text-[10px] uppercase tracking-wider">
+          <div className="inline-flex rounded-md border border-usdh-border p-0.5 text-[10px] uppercase tracking-wider">
             {(['testnet', 'mainnet'] as const).map((n) => (
               <button
                 key={n}
@@ -289,8 +301,8 @@ export function USDHSwap(props: USDHSwapProps) {
                 disabled={networkToggleLocked}
                 className={`rounded px-2 py-1 transition ${
                   network === n
-                    ? 'bg-neutral-800 text-neutral-100'
-                    : 'text-neutral-500 hover:text-neutral-300'
+                    ? 'bg-usdh-surface-2 text-usdh-text'
+                    : 'text-usdh-text-soft hover:text-usdh-text-muted'
                 } disabled:cursor-not-allowed disabled:opacity-40`}
               >
                 {n === 'mainnet' ? 'Mainnet' : 'Testnet'}
@@ -301,19 +313,19 @@ export function USDHSwap(props: USDHSwapProps) {
       </div>
 
       {!isConnected ? (
-        <p className="mt-6 rounded-xl border border-neutral-800/60 bg-neutral-950/50 p-5 text-center text-xs text-neutral-500">
+        <p className="mt-6 rounded-xl border border-usdh-border/60 bg-usdh-bg/50 p-5 text-center text-xs text-usdh-text-soft">
           Connect a wallet on {networkLabel(network)} to continue.
         </p>
       ) : (
         <>
           {onWrongChain && (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-xs">
-              <span className="text-neutral-300">Wrong network</span>
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-usdh-border bg-usdh-surface/60 px-3 py-2 text-xs">
+              <span className="text-usdh-text-muted">Wrong network</span>
               <button
                 type="button"
                 onClick={() => switchChain({ chainId: expectedChainId })}
                 disabled={isSwitching}
-                className="inline-flex items-center gap-1.5 rounded-md bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-md bg-usdh-cta-bg px-2.5 py-1 text-[11px] font-medium text-usdh-cta-text hover:bg-usdh-cta-bg-hover disabled:opacity-50"
               >
                 {isSwitching && <Spinner />}
                 Switch
@@ -322,18 +334,18 @@ export function USDHSwap(props: USDHSwapProps) {
           )}
 
           <div className="mt-4">
-            <div className="rounded-xl border border-neutral-800/70 bg-neutral-900/40 p-4">
-              <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-wider text-neutral-500">
+            <div className="rounded-xl border border-usdh-border/70 bg-usdh-surface/40 p-4">
+              <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-wider text-usdh-text-soft">
                 <span>You pay</span>
                 <button
                   type="button"
                   onClick={toggleSourceChain}
                   disabled={inputDisabled}
                   aria-label={`Source chain: ${sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'}. Click to switch.`}
-                  className="group inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-neutral-400 transition hover:bg-neutral-800/60 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="group inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-usdh-text-soft transition hover:bg-usdh-surface-2/60 hover:text-usdh-text disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span>from {sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'}</span>
-                  <SwitchHorizontal className="text-neutral-600 transition group-hover:text-neutral-300" />
+                  <SwitchHorizontal className="text-usdh-text-faint transition group-hover:text-usdh-text-muted" />
                 </button>
               </div>
               <div className="mt-2.5 flex items-center gap-3">
@@ -346,25 +358,25 @@ export function USDHSwap(props: USDHSwapProps) {
                   disabled={inputDisabled}
                   aria-label="Amount in USDC"
                   placeholder="0"
-                  className="min-w-0 flex-1 bg-transparent font-sans text-4xl font-light tracking-tight text-neutral-100 outline-none placeholder:text-neutral-700 disabled:opacity-60"
+                  className="min-w-0 flex-1 bg-transparent font-sans text-4xl font-light tracking-tight text-usdh-text outline-none placeholder:text-usdh-placeholder disabled:opacity-60"
                 />
                 <TokenChip icon={<UsdcIcon />} ticker="USDC" />
               </div>
-              <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-neutral-500">
+              <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-usdh-text-soft">
                 <span className="min-w-0 truncate">
-                  {payUsdValue && <span className="text-neutral-500">{payUsdValue}</span>}
+                  {payUsdValue && <span className="text-usdh-text-soft">{payUsdValue}</span>}
                   {balancesLoaded && (
                     <span className="ml-2">
-                      <span className="text-neutral-600">EVM </span>
+                      <span className="text-usdh-text-faint">EVM </span>
                       <span
-                        className={`font-mono ${sourceChain === 'evm' ? 'text-neutral-200' : 'text-neutral-600'}`}
+                        className={`font-mono ${sourceChain === 'evm' ? 'text-usdh-text' : 'text-usdh-text-faint'}`}
                       >
                         {formatBalance(balances.evm, balances.evmDecimals)}
                       </span>
-                      <span className="mx-1.5 text-neutral-700">·</span>
-                      <span className="text-neutral-600">HC </span>
+                      <span className="mx-1.5 text-usdh-text-faint">·</span>
+                      <span className="text-usdh-text-faint">HC </span>
                       <span
-                        className={`font-mono ${sourceChain === 'hc' ? 'text-neutral-200' : 'text-neutral-600'}`}
+                        className={`font-mono ${sourceChain === 'hc' ? 'text-usdh-text' : 'text-usdh-text-faint'}`}
                       >
                         {formatBalance(balances.hc, balances.hcDecimals)}
                       </span>
@@ -376,7 +388,7 @@ export function USDHSwap(props: USDHSwapProps) {
                     type="button"
                     onClick={setMaxAmount}
                     disabled={inputDisabled}
-                    className="shrink-0 rounded border border-neutral-800 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-400 transition hover:border-neutral-700 hover:text-neutral-200 disabled:opacity-50"
+                    className="shrink-0 rounded border border-usdh-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-usdh-text-soft transition hover:border-usdh-border-strong hover:text-usdh-text disabled:opacity-50"
                   >
                     Max
                   </button>
@@ -385,34 +397,36 @@ export function USDHSwap(props: USDHSwapProps) {
             </div>
 
             <div className="flex justify-center py-1.5" aria-hidden="true">
-              <span className="flex h-6 w-6 items-center justify-center rounded-md border border-neutral-800/80 bg-neutral-900/40 text-neutral-500">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md border border-usdh-border bg-usdh-surface/40 text-usdh-text-soft">
                 <ArrowDown />
               </span>
             </div>
 
-            <div className="rounded-xl border border-neutral-800/70 bg-neutral-900/40 p-4">
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-neutral-500">
+            <div className="rounded-xl border border-usdh-border/70 bg-usdh-surface/40 p-4">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-usdh-text-soft">
                 <span>You receive</span>
-                <span className="font-mono text-neutral-500">on HyperCore</span>
+                <span className="font-mono text-usdh-text-soft">on HyperCore</span>
               </div>
               <div className="mt-2.5 flex items-center gap-3">
-                <span className="min-w-0 flex-1 truncate font-sans text-4xl font-light tracking-tight text-neutral-100">
+                <span className="min-w-0 flex-1 truncate font-sans text-4xl font-light tracking-tight text-usdh-text">
                   {isQuoting && !quote ? <Spinner className="h-5 w-5" /> : receiveDisplay}
                 </span>
                 <TokenChip icon={<UsdhIcon />} ticker="USDH" />
               </div>
-              <p className="mt-2 text-[11px] text-neutral-500">{receiveUsdValue ?? ' '}</p>
+              <p className="mt-2 text-[11px] text-usdh-text-soft">{receiveUsdValue ?? ' '}</p>
             </div>
           </div>
 
           {insufficientForRoute && (
-            <p className="mt-2 text-[11px] text-neutral-500">
+            <p className="mt-2 text-[11px] text-usdh-text-soft">
               Exceeds your {sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} USDC balance.
             </p>
           )}
 
           <div className="mt-4">
-            <p className="mb-1.5 text-[10px] uppercase tracking-wider text-neutral-500">Slippage</p>
+            <p className="mb-1.5 text-[10px] uppercase tracking-wider text-usdh-text-soft">
+              Slippage
+            </p>
             <div className="flex flex-wrap items-center gap-1">
               {SLIPPAGE_PRESETS_BPS.map((bps) => {
                 const active = slippageBps === bps && !showCustomSlippage
@@ -425,8 +439,8 @@ export function USDHSwap(props: USDHSwapProps) {
                     disabled={inputDisabled}
                     className={`rounded-md border px-2 py-1 font-mono text-[11px] transition ${
                       active
-                        ? 'border-neutral-200 bg-neutral-100 text-neutral-900'
-                        : 'border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'
+                        ? 'border-usdh-cta-bg bg-usdh-cta-bg text-usdh-cta-text'
+                        : 'border-usdh-border text-usdh-text-soft hover:border-usdh-border-strong hover:text-usdh-text'
                     }`}
                   >
                     {bpsToPercent(bps)}
@@ -440,14 +454,14 @@ export function USDHSwap(props: USDHSwapProps) {
                 disabled={inputDisabled}
                 className={`rounded-md border px-2 py-1 font-mono text-[11px] transition ${
                   showCustomSlippage
-                    ? 'border-neutral-200 bg-neutral-100 text-neutral-900'
-                    : 'border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'
+                    ? 'border-usdh-cta-bg bg-usdh-cta-bg text-usdh-cta-text'
+                    : 'border-usdh-border text-usdh-text-soft hover:border-usdh-border-strong hover:text-usdh-text'
                 }`}
               >
                 Custom
               </button>
               {showCustomSlippage && (
-                <div className="flex items-center gap-1 rounded-md border border-neutral-800 px-2 py-1 font-mono text-[11px]">
+                <div className="flex items-center gap-1 rounded-md border border-usdh-border px-2 py-1 font-mono text-[11px]">
                   <input
                     type="text"
                     inputMode="decimal"
@@ -455,9 +469,9 @@ export function USDHSwap(props: USDHSwapProps) {
                     onChange={(e) => applyCustomSlippage(e.target.value)}
                     placeholder="0.30"
                     aria-label="Custom slippage percent"
-                    className="w-10 bg-transparent text-neutral-100 outline-none placeholder:text-neutral-700"
+                    className="w-10 bg-transparent text-usdh-text outline-none placeholder:text-usdh-placeholder"
                   />
-                  <span className="text-neutral-500">%</span>
+                  <span className="text-usdh-text-soft">%</span>
                 </div>
               )}
             </div>
@@ -467,7 +481,7 @@ export function USDHSwap(props: USDHSwapProps) {
             type="button"
             onClick={executeBridgeAndSwap}
             disabled={!canSwap}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-usdh-cta-bg px-4 py-2.5 text-sm font-medium text-usdh-cta-text transition hover:bg-usdh-cta-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {phase === 'bridging' ? (
               <>
@@ -487,31 +501,31 @@ export function USDHSwap(props: USDHSwapProps) {
           </button>
 
           {requiresBridge && parsedAmount !== null && parsedAmount > 0n && phase === 'idle' && (
-            <p className="mt-2 text-center text-[10px] leading-relaxed text-neutral-600">
+            <p className="mt-2 text-center text-[10px] leading-relaxed text-usdh-text-faint">
               Your wallet will request a transfer to{' '}
-              <span className="font-mono text-neutral-500">0x2000…0000</span> — Hyperliquid's USDC
-              system address.
+              <span className="font-mono text-usdh-text-soft">0x2000…0000</span> — Hyperliquid's
+              USDC system address.
             </p>
           )}
 
           {error && (
             <p
               role="alert"
-              className="mt-3 rounded-lg border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-[11px] text-neutral-200"
+              className="mt-3 rounded-lg border border-usdh-border bg-usdh-surface/60 px-3 py-2 text-[11px] text-usdh-text"
             >
               {error}
             </p>
           )}
 
           {result && (
-            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/60 p-3 text-[11px]">
+            <div className="mt-3 rounded-xl border border-usdh-border bg-usdh-bg/60 p-3 text-[11px]">
               <div className="flex items-center justify-between">
-                <span className="font-medium text-neutral-200">Filled</span>
-                <span className="font-mono text-neutral-100">
+                <span className="font-medium text-usdh-text">Filled</span>
+                <span className="font-mono text-usdh-text">
                   {trimReceive(result.receivedUsdh, USDC_DECIMALS)} USDH
                 </span>
               </div>
-              <p className="mt-1 text-[10px] text-neutral-500">
+              <p className="mt-1 text-[10px] text-usdh-text-soft">
                 order {result.orderId}
                 {result.txHash && (
                   <>
@@ -525,7 +539,7 @@ export function USDHSwap(props: USDHSwapProps) {
               <button
                 type="button"
                 onClick={reset}
-                className="mt-2 text-[11px] text-neutral-400 underline hover:text-neutral-200"
+                className="mt-2 text-[11px] text-usdh-text-soft underline hover:text-usdh-text"
               >
                 Swap again
               </button>
@@ -535,7 +549,7 @@ export function USDHSwap(props: USDHSwapProps) {
       )}
 
       {!hideAttribution && (
-        <div className="mt-4 border-t border-neutral-900 pt-3">
+        <div className="mt-4 border-t border-usdh-border pt-3">
           <Watermark />
         </div>
       )}
@@ -545,7 +559,7 @@ export function USDHSwap(props: USDHSwapProps) {
 
 function TokenChip({ icon, ticker }: { icon: React.ReactNode; ticker: string }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-neutral-700/60 bg-neutral-900 py-1 pl-1 pr-3 font-medium text-sm text-neutral-100 shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset]">
+    <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-usdh-border-strong/60 bg-usdh-surface py-1 pl-1 pr-3 font-medium text-sm text-usdh-text shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset]">
       {icon}
       {ticker}
     </span>

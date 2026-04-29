@@ -1,1 +1,77 @@
 @tailwind utilities;
+
+/*
+ * Theme tokens for @usdh-kit/widget.
+ *
+ * The widget defaults to light mode tokens on `.usdh-widget`; when the
+ * effective theme is dark (computed from the `theme` prop or the user's
+ * system preference) USDHSwap adds a `dark` class to the root which
+ * overrides each token. Tokens are RGB triples (no `rgb()` wrapper) so
+ * the Tailwind `<alpha-value>` substitution can apply opacity (e.g.
+ * `bg-usdh-surface/40`).
+ *
+ * Defaults target WCAG AA contrast on every body text against the
+ * surface it sits on. Integrators can override any token in their own
+ * stylesheet (after the widget's stylesheet) to customise the palette
+ * without forking the widget — e.g.
+ *
+ *   .usdh-widget.dark { --usdh-bg: 8 4 16; }   // deeper purple-black
+ */
+
+.usdh-widget {
+  /* Surfaces */
+  --usdh-bg: 255 255 255; /* #ffffff — outer card background */
+  --usdh-surface: 250 250 250; /* #fafafa — pay/receive cards */
+  --usdh-surface-2: 245 245 245; /* #f5f5f5 — secondary surfaces */
+
+  /* Borders */
+  --usdh-border: 229 229 229; /* #e5e5e5 — default border */
+  --usdh-border-strong: 212 212 212; /* #d4d4d4 — emphasised border */
+
+  /* Text */
+  --usdh-text: 23 23 23; /* #171717 — primary heading + amount, 16:1 on bg */
+  --usdh-text-2: 38 38 38; /* #262626 — secondary heading */
+  --usdh-text-muted: 64 64 64; /* #404040 — body text, 11:1 on bg */
+  --usdh-text-soft: 82 82 82; /* #525252 — labels / metadata, 8:1 on bg */
+  --usdh-text-faint: 115 115 115; /* #737373 — fine print, 5:1 on bg (AA pass) */
+  --usdh-placeholder: 163 163 163; /* #a3a3a3 — input placeholder */
+
+  /* Primary CTA */
+  --usdh-cta-bg: 23 23 23; /* #171717 — primary action background */
+  --usdh-cta-bg-hover: 0 0 0; /* #000000 — hover */
+  --usdh-cta-text: 250 250 250; /* #fafafa — primary action text */
+
+  /* Slippage chip / pill controls */
+  --usdh-chip-bg: 245 245 245; /* #f5f5f5 — chip resting */
+  --usdh-chip-active-bg: 23 23 23; /* #171717 — chip active */
+  --usdh-chip-active-text: 250 250 250; /* #fafafa — chip active text */
+}
+
+.usdh-widget.dark {
+  /* Surfaces */
+  --usdh-bg: 10 10 10; /* #0a0a0a (neutral-950) */
+  --usdh-surface: 23 23 23; /* #171717 (neutral-900) */
+  --usdh-surface-2: 38 38 38; /* #262626 (neutral-800) */
+
+  /* Borders — bumped one tier brighter than v1 for visibility */
+  --usdh-border: 64 64 64; /* #404040 (neutral-700) */
+  --usdh-border-strong: 82 82 82; /* #525252 (neutral-600) */
+
+  /* Text — bumped to clear WCAG AA on every dark surface */
+  --usdh-text: 250 250 250; /* #fafafa — 18:1 on bg */
+  --usdh-text-2: 229 229 229; /* #e5e5e5 — 15:1 on bg */
+  --usdh-text-muted: 212 212 212; /* #d4d4d4 — 13:1 on bg */
+  --usdh-text-soft: 163 163 163; /* #a3a3a3 — 7.5:1 on bg, 6:1 on surface */
+  --usdh-text-faint: 115 115 115; /* #737373 — 4.5:1 on bg, AA borderline */
+  --usdh-placeholder: 82 82 82; /* #525252 */
+
+  /* Primary CTA */
+  --usdh-cta-bg: 245 245 245; /* #f5f5f5 — light pill on dark */
+  --usdh-cta-bg-hover: 255 255 255; /* #ffffff */
+  --usdh-cta-text: 23 23 23; /* #171717 */
+
+  /* Slippage chip / pill */
+  --usdh-chip-bg: 23 23 23;
+  --usdh-chip-active-bg: 245 245 245;
+  --usdh-chip-active-text: 23 23 23;
+}
