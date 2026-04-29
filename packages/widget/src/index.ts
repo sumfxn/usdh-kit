@@ -1,4 +1,7 @@
 export { useUsdhKit } from './use-usdh-kit.js'
+export { useUsdcBalances } from './use-balances.js'
+export type { UsdcBalances } from './use-balances.js'
+export { friendlyError } from './friendly-error.js'
 export { USDHSwap } from './usdh-swap.js'
 export type { USDHSwapProps } from './usdh-swap.js'
-export type { HyperNetwork } from './types.js'
+export type { HyperNetwork, SwapResultPayload, WidgetTheme } from './types.js'
