@@ -1,6 +1,18 @@
 export { createUsdhKit } from './kit.js'
 export type { UsdhKit } from './kit.js'
 
+export { createInfoClient } from './transport/info.js'
+export type { InfoClient, InfoClientConfig, NSigFigs } from './transport/info.js'
+export type {
+  L2Book,
+  L2Level,
+  SpotBalance,
+  SpotClearinghouseState,
+  SpotMeta,
+  SpotPair,
+  SpotToken,
+} from './transport/types.js'
+
 export {
   BridgeTimeoutError,
   InsufficientBalanceError,
