@@ -9,6 +9,7 @@ import {
   NotImplementedError,
   type Signer,
   createUsdhKit,
+  isBridgeAndSwapError,
 } from '../src/index.js'
 import type { L2Book, SpotMeta } from '../src/transport/types.js'
 import type { EvmWallet } from '../src/types/evm-wallet.js'
@@ -518,6 +519,22 @@ describe('bridgeAndSwap', () => {
     await expect(
       kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n, sourceChain: 'hypercore' }),
     ).rejects.toThrow(InsufficientBalanceError)
+  })
+
+  it('detects BridgeAndSwapError across instance and structural shapes', () => {
+    const real = new BridgeAndSwapError('bridging', new Error('wallet offline'))
+    const structural = {
+      name: 'BridgeAndSwapError',
+      phase: 'swapping',
+      cause: new NetworkError('exchange error: Insufficient margin'),
+    }
+
+    expect(isBridgeAndSwapError(real)).toBe(true)
+    expect(isBridgeAndSwapError(structural)).toBe(true)
+    expect(isBridgeAndSwapError({ name: 'BridgeAndSwapError', phase: 'done', cause: real })).toBe(
+      false,
+    )
+    expect(isBridgeAndSwapError(new Error('plain'))).toBe(false)
   })
 
   it('wraps route failures with lifecycle context', async () => {

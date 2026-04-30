@@ -27,6 +27,28 @@ export class BridgeAndSwapError extends UsdhKitError {
   }
 }
 
+type BridgeAndSwapErrorShape = {
+  name?: unknown
+  phase?: unknown
+  cause?: unknown
+}
+
+export function isBridgeAndSwapError(err: unknown): err is BridgeAndSwapError {
+  if (err instanceof BridgeAndSwapError) return true
+  if (!isBridgeAndSwapErrorShape(err)) return false
+  return (
+    err.name === 'BridgeAndSwapError' && isBridgeAndSwapFailurePhase(err.phase) && 'cause' in err
+  )
+}
+
+function isBridgeAndSwapFailurePhase(phase: unknown): phase is BridgeAndSwapFailurePhase {
+  return phase === 'route' || phase === 'bridging' || phase === 'swapping'
+}
+
+function isBridgeAndSwapErrorShape(value: unknown): value is BridgeAndSwapErrorShape {
+  return typeof value === 'object' && value !== null
+}
+
 function errorMessage(cause: unknown): string {
   if (cause instanceof Error) return cause.message
   if (typeof cause === 'string') return cause

@@ -127,6 +127,11 @@ vi.mock('@usdh-kit/sdk', () => ({
       this.cause = cause
     }
   },
+  isBridgeAndSwapError: (err: unknown) =>
+    typeof err === 'object' &&
+    err !== null &&
+    'name' in err &&
+    (err as { name?: unknown }).name === 'BridgeAndSwapError',
   BridgeTimeoutError: class extends Error {},
   InsufficientBalanceError: class extends Error {},
   InvalidInputError: class extends Error {},

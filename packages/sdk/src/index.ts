@@ -23,6 +23,7 @@ export {
   NotImplementedError,
   SigningError,
   UsdhKitError,
+  isBridgeAndSwapError,
 } from './errors.js'
 
 export type { BridgeAsset, BridgeInput, BridgeResult } from './types/bridge.js'

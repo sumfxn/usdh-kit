@@ -1,5 +1,4 @@
 import {
-  BridgeAndSwapError,
   BridgeTimeoutError,
   InsufficientBalanceError,
   InvalidInputError,
@@ -8,6 +7,7 @@ import {
   NotImplementedError,
   SigningError,
   UsdhKitError,
+  isBridgeAndSwapError,
 } from '@usdh-kit/sdk'
 
 const VIEM_USER_REJECTED_NAMES = new Set([
@@ -26,7 +26,7 @@ export function friendlyError(err: unknown): string {
   if (isUserRejectedError(err)) {
     return 'Transaction rejected in your wallet.'
   }
-  if (err instanceof BridgeAndSwapError) {
+  if (isBridgeAndSwapError(err)) {
     return friendlyError(err.cause)
   }
   if (err instanceof MissingEvmWalletError) {

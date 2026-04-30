@@ -20,18 +20,26 @@ const kit = createUsdhKit({
 
 The EVM transfer succeeded but the HyperCore credit did not land within the polling window. Funds are safe — they are at the system address waiting for HL to index. Most bridges land in 5–15s; longer points to congestion or a relayer hiccup.
 
-Retry the bridge call with the same arguments. The kit re-checks the HC balance and resolves once the credit appears, even if from a previous tx.
+Retry the bridge call with the same arguments. The kit re-checks the HC balance and resolves once the credit appears, even if from a previous tx. If the timeout came through `bridgeAndSwap()`, it will be available as `err.cause` on a `BridgeAndSwapError` with `phase === 'bridging'`.
 
 ### `BridgeAndSwapError: bridgeAndSwap failed during bridging: ...`
 
-`bridgeAndSwap()` wraps unexpected route, bridge, and swap failures with lifecycle context. Inspect `phase` for UI copy and `cause` for the underlying typed error. Do not parse the message string.
+`bridgeAndSwap()` wraps unexpected route, bridge, and swap failures with lifecycle context. Use `isBridgeAndSwapError(err)` to narrow safely, then inspect `phase` for UI copy and `cause` for the underlying typed error. Do not parse the message string.
 
 ```ts
+import { BridgeTimeoutError, isBridgeAndSwapError } from '@usdh-kit/sdk'
+
 try {
   await kit.bridgeAndSwap({ from: 'USDC', amount, onProgress })
 } catch (err) {
-  if (err instanceof BridgeAndSwapError) {
+  if (isBridgeAndSwapError(err)) {
     console.error(err.phase, err.route, err.bridge, err.cause)
+
+    if (err.phase === 'bridging' && err.cause instanceof BridgeTimeoutError) {
+      showPendingBridge(err.cause.txHash)
+      // Calling bridgeAndSwap again with the same input re-checks HC credit
+      // before deciding whether another bridge is still needed.
+    }
   }
 }
 ```

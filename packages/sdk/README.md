@@ -32,7 +32,7 @@ pnpm add @usdh-kit/sdk
 ## Quickstart
 
 ```ts
-import { BridgeAndSwapError, createUsdhKit } from '@usdh-kit/sdk'
+import { BridgeTimeoutError, createUsdhKit, isBridgeAndSwapError } from '@usdh-kit/sdk'
 
 const kit = createUsdhKit({ network: 'mainnet', signer, evmWallet, slippageBps: 30 })
 
@@ -45,8 +45,11 @@ try {
 
   console.log(`got ${result.swap.received} USDH for ${result.swap.spent} USDC`)
 } catch (err) {
-  if (err instanceof BridgeAndSwapError) {
+  if (isBridgeAndSwapError(err)) {
     console.error(`${err.phase} failed`, err.cause)
+    if (err.cause instanceof BridgeTimeoutError) {
+      console.log(`bridge tx ${err.cause.txHash} is still pending HyperCore credit`)
+    }
   }
   throw err
 }
@@ -117,7 +120,7 @@ console.log(result.bridge?.txHash)
 console.log(result.swap.orderId)
 ```
 
-Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. The wrapper exposes `phase`, `route`, optional `bridge`, and `cause` so apps can show accurate recovery copy without parsing strings. Preflight blockers still throw their specific errors (`MissingEvmWalletError`, `InsufficientBalanceError`).
+Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. Use `isBridgeAndSwapError(err)` to narrow the type, then inspect `phase`, `route`, optional `bridge`, and `cause` so apps can show accurate recovery copy without parsing strings. If `cause` is `BridgeTimeoutError`, the EVM transfer was sent and you can show `cause.txHash` while waiting/retrying for HyperCore credit. Preflight blockers still throw their specific errors (`MissingEvmWalletError`, `InsufficientBalanceError`).
 
 ## Features (V1)
 
@@ -127,7 +130,7 @@ Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. 
 * `bridgeAndSwap()` high-level orchestration with progress callbacks
 * Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 * Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book)
-* Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context
+* Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` narrowing
 * npm provenance on every release
 * Mainnet and testnet support, no signing on read paths
 

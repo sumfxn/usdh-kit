@@ -132,7 +132,7 @@ A few real flows the SDK is shaped for today. Runnable examples are still on the
 - HyperCore balance, route/preflight helpers plus `bridgeAndSwap()` orchestration
 - Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 - Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book) for consumers building custom UIs
-- Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context for orchestration failures
+- Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` for orchestration failures
 - `friendlyError()` helper to map SDK errors to short, copy-safe strings
 - React widget (`@usdh-kit/widget`) with light, dark and auto theming (WCAG AA defaults, CSS variables for integrator overrides)
 - npm provenance on every release
