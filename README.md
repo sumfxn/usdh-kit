@@ -1,8 +1,12 @@
 # usdh-kit
 
 [![CI](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
-[![License: MIT](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
+[![sdk](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000&label=%40usdh-kit%2Fsdk)](https://www.npmjs.com/package/@usdh-kit/sdk)
+[![widget](https://img.shields.io/npm/v/@usdh-kit/widget?style=flat&color=000000&label=%40usdh-kit%2Fwidget)](https://www.npmjs.com/package/@usdh-kit/widget)
+[![downloads](https://img.shields.io/npm/dm/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
+[![bundle](https://img.shields.io/bundlephobia/minzip/@usdh-kit/sdk?style=flat&color=000000&label=sdk%20gzipped)](https://bundlephobia.com/package/@usdh-kit/sdk)
+[![types](https://img.shields.io/npm/types/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
+[![license](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
 
 TypeScript SDK and React widget to swap stablecoins into USDH on Hyperliquid.
 
