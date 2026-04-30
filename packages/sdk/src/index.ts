@@ -37,4 +37,17 @@ export type {
   TypedDataDomain,
   TypedDataField,
 } from './types/signer.js'
-export type { Quote, QuoteInput, SourceStable, SwapInput, SwapResult } from './types/swap.js'
+export type {
+  BridgeAndSwapEvent,
+  BridgeAndSwapInput,
+  BridgeAndSwapResult,
+  Quote,
+  QuoteInput,
+  RouteBlockReason,
+  RouteInput,
+  SourceChain,
+  SourceStable,
+  SwapInput,
+  SwapResult,
+  SwapRoute,
+} from './types/swap.js'

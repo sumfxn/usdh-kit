@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  InsufficientBalanceError,
   InvalidInputError,
+  MissingEvmWalletError,
   NetworkError,
   NotImplementedError,
   type Signer,
   createUsdhKit,
 } from '../src/index.js'
 import type { L2Book, SpotMeta } from '../src/transport/types.js'
+import type { EvmWallet } from '../src/types/evm-wallet.js'
 
 const stubSigner: Signer = {
   address: '0x0000000000000000000000000000000000000001',
@@ -25,6 +28,10 @@ const sampleSpotMeta: SpotMeta = {
       index: 0,
       tokenId: '0xaaaa',
       isCanonical: true,
+      evmContract: {
+        address: '0x6b9e773128f453f5c2c60935ee2de2cbc5390a24',
+        evm_extra_wei_decimals: -2,
+      },
     },
     {
       name: 'USDH',
@@ -70,6 +77,51 @@ function backend(exchangeResponse: unknown): {
     throw new Error(`unexpected url: ${url}`)
   }) as unknown as typeof fetch
   return { fetch, getExchangeBody: () => exchangeBody }
+}
+
+function routingBackend(
+  exchangeResponse: unknown,
+  hcBalances: string[] = ['0'],
+): {
+  fetch: typeof fetch
+  getExchangeBody: () => Record<string, unknown> | undefined
+} {
+  let exchangeBody: Record<string, unknown> | undefined
+  let balanceIndex = 0
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString()
+    const body = JSON.parse(init?.body as string) as Record<string, unknown>
+    if (url.endsWith('/info')) {
+      if (body.type === 'spotMeta') return jsonResponse(sampleSpotMeta)
+      if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
+      if (body.type === 'spotClearinghouseState') {
+        const total = hcBalances[Math.min(balanceIndex, hcBalances.length - 1)] ?? '0'
+        balanceIndex += 1
+        return jsonResponse({
+          balances: [{ coin: 'USDC', token: 0, total, hold: '0', entryNtl: '0' }],
+        })
+      }
+      throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
+    }
+    if (url.endsWith('/exchange')) {
+      exchangeBody = body
+      return jsonResponse(exchangeResponse)
+    }
+    throw new Error(`unexpected url: ${url}`)
+  }) as unknown as typeof fetch
+  return { fetch, getExchangeBody: () => exchangeBody }
+}
+
+function stubEvmWallet(txHash = `0x${'c'.repeat(64)}`): EvmWallet & { calls: unknown[] } {
+  const calls: unknown[] = []
+  return {
+    address: stubSigner.address,
+    sendTransaction: async (req) => {
+      calls.push(req)
+      return txHash as `0x${string}`
+    },
+    calls,
+  }
 }
 
 describe('createUsdhKit', () => {
@@ -277,5 +329,139 @@ describe('getQuote', () => {
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
     await expect(kit.getQuote({ from: 'USDC', amount: 0n })).rejects.toThrow(InvalidInputError)
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('getRoute', () => {
+  it('routes directly from HyperCore when HC balance covers amount plus buffers', async () => {
+    const { fetch } = routingBackend({}, ['2'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch, slippageBps: 30 })
+
+    const route = await kit.getRoute({ from: 'USDC', amount: 1_000_000n })
+
+    expect(route.sourceChain).toBe('hypercore')
+    expect(route.requiresBridge).toBe(false)
+    expect(route.canSwap).toBe(true)
+    expect(route.hypercoreBalance).toBe(200_000_000n)
+  })
+
+  it('routes through HyperEVM when HyperCore balance is short and an EVM wallet is configured', async () => {
+    const { fetch } = routingBackend({}, ['0'])
+    const kit = createUsdhKit({
+      network: 'mainnet',
+      signer: stubSigner,
+      evmWallet: stubEvmWallet(),
+      fetch,
+    })
+
+    const route = await kit.getRoute({ from: 'USDC', amount: 1_000_000n })
+
+    expect(route.sourceChain).toBe('hyperevm')
+    expect(route.requiresBridge).toBe(true)
+    expect(route.canSwap).toBe(true)
+    expect(route.blockReason).toBeUndefined()
+  })
+
+  it('surfaces a missing wallet when the selected route requires a bridge', async () => {
+    const { fetch } = routingBackend({}, ['0'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    const route = await kit.preflightSwap({ from: 'USDC', amount: 1_000_000n })
+
+    expect(route.requiresBridge).toBe(true)
+    expect(route.canSwap).toBe(false)
+    expect(route.blockReason).toBe('missing_evm_wallet')
+  })
+
+  it('surfaces insufficient HC balance when HyperCore is forced', async () => {
+    const { fetch } = routingBackend({}, ['0'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    const route = await kit.getRoute({
+      from: 'USDC',
+      amount: 1_000_000n,
+      sourceChain: 'hypercore',
+    })
+
+    expect(route.sourceChain).toBe('hypercore')
+    expect(route.requiresBridge).toBe(false)
+    expect(route.canSwap).toBe(false)
+    expect(route.blockReason).toBe('insufficient_hypercore_balance')
+  })
+})
+
+describe('bridgeAndSwap', () => {
+  const filledResponse = {
+    status: 'ok',
+    response: {
+      type: 'order',
+      data: { statuses: [{ filled: { totalSz: '0.999800', avgPx: '1.0002', oid: 12345 } }] },
+    },
+  }
+
+  it('bridges from HyperEVM before swapping when the route requires a bridge', async () => {
+    const { fetch } = routingBackend(filledResponse, ['0', '0', '1'])
+    const evmWallet = stubEvmWallet(`0x${'d'.repeat(64)}`)
+    const progress = vi.fn()
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, evmWallet, fetch })
+
+    const result = await kit.bridgeAndSwap({
+      from: 'USDC',
+      amount: 1_000_000n,
+      waitForCreditTimeoutMs: 3_000,
+      onProgress: progress,
+    })
+
+    expect(evmWallet.calls).toHaveLength(1)
+    expect(result.bridge?.txHash).toBe(`0x${'d'.repeat(64)}`)
+    expect(result.swap.orderId).toBe('12345')
+    expect(progress.mock.calls.map(([event]) => event.phase)).toEqual([
+      'route',
+      'bridging',
+      'swapping',
+      'done',
+    ])
+  })
+
+  it('skips the bridge when HyperCore already covers the route', async () => {
+    const { fetch } = routingBackend(filledResponse, ['2'])
+    const evmWallet = stubEvmWallet()
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, evmWallet, fetch })
+
+    const result = await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+
+    expect(evmWallet.calls).toHaveLength(0)
+    expect(result.bridge).toBeUndefined()
+    expect(result.route.sourceChain).toBe('hypercore')
+    expect(result.swap.orderId).toBe('12345')
+  })
+
+  it('works when bridgeAndSwap is destructured from the kit object', async () => {
+    const { fetch } = routingBackend(filledResponse, ['2'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+    const { bridgeAndSwap } = kit
+
+    const result = await bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+
+    expect(result.route.sourceChain).toBe('hypercore')
+    expect(result.swap.orderId).toBe('12345')
+  })
+
+  it('throws MissingEvmWalletError when auto routing needs a bridge but no EVM wallet exists', async () => {
+    const { fetch } = routingBackend(filledResponse, ['0'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    await expect(kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })).rejects.toThrow(
+      MissingEvmWalletError,
+    )
+  })
+
+  it('throws InsufficientBalanceError when HyperCore is forced without enough balance', async () => {
+    const { fetch } = routingBackend(filledResponse, ['0'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    await expect(
+      kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n, sourceChain: 'hypercore' }),
+    ).rejects.toThrow(InsufficientBalanceError)
   })
 })

@@ -16,9 +16,11 @@ What works today:
 
 * `getQuote()` and `swap()` for `USDC → USDH` end to end (signing + msgpack + IOC limit submission)
 * `bridgeToCore()` for moving USDC from HyperEVM to HyperCore, with credit polling
+* `getRoute()` / `preflightSwap()` for HyperCore-vs-HyperEVM source selection
+* `bridgeAndSwap()` for route → optional bridge → swap orchestration
 * Read-only `InfoClient` (spotMeta, spotClearinghouseState, L2 book)
 
-Deferred to follow-up PRs: USDT pricing/swap, reverse direction (USDH → USDC), multi-chain source, `bridgeAndSwap` helper.
+Deferred to follow-up PRs: USDT pricing/swap, reverse direction (USDH → USDC), multi-chain source.
 
 ## Install
 
@@ -33,9 +35,13 @@ import { createUsdhKit } from '@usdh-kit/sdk'
 
 const kit = createUsdhKit({ network: 'mainnet', signer, slippageBps: 30 })
 
-const result = await kit.swap({ from: 'USDC', amount: 1_000_000n })
-console.log(`got ${result.received} USDH for ${result.spent} USDC`)
-console.log(`realised slippage: ${result.slippageBps}bps`)
+const result = await kit.bridgeAndSwap({
+  from: 'USDC',
+  amount: 1_000_000n,
+  onProgress: (event) => console.log(event.phase),
+})
+
+console.log(`got ${result.swap.received} USDH for ${result.swap.spent} USDC`)
 ```
 
 `swap()` submits an IOC limit order priced `slippageBps` above the mid (max
@@ -55,10 +61,53 @@ if (Date.now() < quote.validUntil) {
 }
 ```
 
+## Route and preflight
+
+`getRoute()` decides whether the user can swap directly from HyperCore or needs
+to bridge from HyperEVM first. It checks HyperCore source balance, applies the
+configured slippage plus a small HC fee buffer, and returns a quote alongside
+the route decision.
+
+```ts
+const route = await kit.preflightSwap({ from: 'USDC', amount: 1_000_000n })
+
+if (!route.canSwap) {
+  console.log(route.blockReason)
+}
+
+if (route.requiresBridge) {
+  console.log('will bridge from HyperEVM before swapping')
+}
+```
+
+`getRoute()` does not inspect the user's HyperEVM ERC20 balance. If it selects
+the bridge route, `canSwap` only means the kit has an `evmWallet` configured;
+the wallet/RPC will still reject an underfunded bridge transaction.
+
+## Bridge and swap
+
+`bridgeAndSwap()` composes the common retail flow:
+
+1. route/preflight
+2. bridge from HyperEVM when required
+3. swap on HyperCore
+
+It returns both legs when a bridge happened:
+
+```ts
+const result = await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+
+console.log(result.route.sourceChain)
+console.log(result.bridge?.txHash)
+console.log(result.swap.orderId)
+```
+
 ## Features (V1)
 
 * `USDC → USDH` quote and swap via the canonical HL spot pair
 * HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
+* `getRoute()` / `preflightSwap()` route selection and preflight metadata
+* `bridgeAndSwap()` high-level orchestration with progress callbacks
 * Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 * Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book)
 * Typed error hierarchy rooted at `UsdhKitError` for clean `instanceof` handling

@@ -1,5 +1,11 @@
 import { runBridgeToCore } from './bridge.js'
-import { InvalidInputError, NetworkError, NotImplementedError } from './errors.js'
+import {
+  InsufficientBalanceError,
+  InvalidInputError,
+  MissingEvmWalletError,
+  NetworkError,
+  NotImplementedError,
+} from './errors.js'
 import { type ResolvedPair, createPairResolver } from './pair-resolver.js'
 import { applyPriceInverse, formatDecimal, midPrice18, parseDecimal } from './pricing.js'
 import { signL1Action } from './signing.js'
@@ -15,18 +21,43 @@ import type { BridgeInput, BridgeResult } from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
 import { silentLogger } from './types/logger.js'
-import type { Quote, QuoteInput, SwapInput, SwapResult } from './types/swap.js'
+import type {
+  BridgeAndSwapInput,
+  BridgeAndSwapResult,
+  Quote,
+  QuoteInput,
+  RouteInput,
+  SourceChain,
+  SwapInput,
+  SwapResult,
+  SwapRoute,
+} from './types/swap.js'
 
 const DEFAULT_SLIPPAGE_BPS = 20
 const QUOTE_TTL_MS = 30_000
 const STABLE_DECIMALS = 6
 const PRICE_DECIMALS = 18
 const TEN_PRICE = 10n ** BigInt(PRICE_DECIMALS)
+const HC_FEE_BUFFER_BPS = 10n
+const BPS_DENOMINATOR = 10_000n
 
 export interface UsdhKit {
   readonly network: KitConfig['network']
   swap(input: SwapInput): Promise<SwapResult>
   getQuote(input: QuoteInput): Promise<Quote>
+  /**
+   * Resolve the recommended source chain for a swap. `auto` prefers a direct
+   * HyperCore swap when the user has enough source balance there, otherwise
+   * routes through the HyperEVM bridge. EVM ERC20 balance is not inspected.
+   */
+  getRoute(input: RouteInput): Promise<SwapRoute>
+  /** Alias of `getRoute` for apps that want preflight semantics in UI code. */
+  preflightSwap(input: RouteInput): Promise<SwapRoute>
+  /**
+   * High-level helper for the common retail path: route, bridge when needed,
+   * then swap. Emits optional lifecycle events for progress UI.
+   */
+  bridgeAndSwap(input: BridgeAndSwapInput): Promise<BridgeAndSwapResult>
   /**
    * Bridge a stable from HyperEVM to HyperCore by sending the asset's ERC20
    * to its HyperCore system address. Resolves once HyperCore credits the
@@ -63,59 +94,115 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     return candidate
   }
 
+  async function swap(input: SwapInput): Promise<SwapResult> {
+    validateSwapInput(input)
+    const slippageBps = input.slippageBps ?? defaultSlippageBps
+    if (input.from === 'USDT') {
+      throw new NotImplementedError('USDT swap lands in a follow-up PR')
+    }
+    logger.debug('swap.requested', {
+      from: input.from,
+      amount: input.amount.toString(),
+      slippageBps,
+    })
+
+    const pair = await resolvePair()
+    const book = await info.l2Book(pair.name)
+    const mid = midPrice18(book)
+
+    const limitPrice18 = (mid * (10_000n + BigInt(slippageBps))) / 10_000n
+    const limitPriceStr = formatDecimal(limitPrice18, PRICE_DECIMALS, pair.quoteWeiDecimals)
+    const sizeUsdh = applyPriceInverse(input.amount, limitPrice18)
+    if (sizeUsdh === 0n) {
+      throw new InvalidInputError('amount too small to fill at the slippage-tolerant limit')
+    }
+    const sizeStr = formatDecimal(sizeUsdh, STABLE_DECIMALS, pair.baseSzDecimals)
+
+    const action = buildOrderAction(pair, limitPriceStr, sizeStr)
+    const nonce = nextNonce()
+
+    logger.debug('swap.signing', { pair: pair.name, nonce: nonce.toString() })
+    const signature = await signL1Action({
+      signer: config.signer,
+      action,
+      nonce,
+      network: config.network,
+    })
+
+    logger.debug('swap.submitting', { pair: pair.name })
+    const response: ExchangeResponse = await exchange.submit({ action, signature, nonce })
+    if (response.status === 'err') {
+      throw new NetworkError(`exchange error: ${response.response}`)
+    }
+    if (!isOrderResponse(response.response)) {
+      throw new NetworkError('unexpected /exchange response shape for order action')
+    }
+
+    const status = response.response.data.statuses[0]
+    if (status === undefined) {
+      throw new NetworkError('exchange returned no order status')
+    }
+
+    return finalizeFill(status, mid, logger)
+  }
+
   return {
     network: config.network,
+    swap,
 
-    async swap(input: SwapInput): Promise<SwapResult> {
-      validateSwapInput(input)
-      const slippageBps = input.slippageBps ?? defaultSlippageBps
-      if (input.from === 'USDT') {
-        throw new NotImplementedError('USDT swap lands in a follow-up PR')
-      }
-      logger.debug('swap.requested', {
-        from: input.from,
-        amount: input.amount.toString(),
-        slippageBps,
-      })
+    async getRoute(input: RouteInput): Promise<SwapRoute> {
+      return getRoute(input)
+    },
 
-      const pair = await resolvePair()
-      const book = await info.l2Book(pair.name)
-      const mid = midPrice18(book)
+    async preflightSwap(input: RouteInput): Promise<SwapRoute> {
+      return getRoute(input)
+    },
 
-      const limitPrice18 = (mid * (10_000n + BigInt(slippageBps))) / 10_000n
-      const limitPriceStr = formatDecimal(limitPrice18, PRICE_DECIMALS, pair.quoteWeiDecimals)
-      const sizeUsdh = applyPriceInverse(input.amount, limitPrice18)
-      if (sizeUsdh === 0n) {
-        throw new InvalidInputError('amount too small to fill at the slippage-tolerant limit')
-      }
-      const sizeStr = formatDecimal(sizeUsdh, STABLE_DECIMALS, pair.baseSzDecimals)
+    async bridgeAndSwap(input: BridgeAndSwapInput): Promise<BridgeAndSwapResult> {
+      const route = await getRoute(input)
+      input.onProgress?.({ phase: 'route', route })
 
-      const action = buildOrderAction(pair, limitPriceStr, sizeStr)
-      const nonce = nextNonce()
-
-      logger.debug('swap.signing', { pair: pair.name, nonce: nonce.toString() })
-      const signature = await signL1Action({
-        signer: config.signer,
-        action,
-        nonce,
-        network: config.network,
-      })
-
-      logger.debug('swap.submitting', { pair: pair.name })
-      const response: ExchangeResponse = await exchange.submit({ action, signature, nonce })
-      if (response.status === 'err') {
-        throw new NetworkError(`exchange error: ${response.response}`)
-      }
-      if (!isOrderResponse(response.response)) {
-        throw new NetworkError('unexpected /exchange response shape for order action')
+      if (!route.canSwap) {
+        if (route.blockReason === 'missing_evm_wallet') {
+          throw new MissingEvmWalletError()
+        }
+        throw new InsufficientBalanceError(
+          route.requiredHypercoreBalance,
+          route.hypercoreBalance,
+          route.from,
+        )
       }
 
-      const status = response.response.data.statuses[0]
-      if (status === undefined) {
-        throw new NetworkError('exchange returned no order status')
+      let bridge: BridgeResult | undefined
+      if (route.requiresBridge) {
+        input.onProgress?.({ phase: 'bridging', route })
+        bridge = await runBridgeToCore(
+          {
+            asset: input.from,
+            amount: input.amount,
+            user: config.signer.address,
+            ...(input.waitForCreditTimeoutMs !== undefined && {
+              waitForCreditTimeoutMs: input.waitForCreditTimeoutMs,
+            }),
+          },
+          {
+            info,
+            evmWallet: config.evmWallet,
+            network: config.network,
+            logger,
+          },
+        )
       }
 
-      return finalizeFill(status, mid, logger)
+      input.onProgress?.({ phase: 'swapping', route, ...(bridge !== undefined && { bridge }) })
+      const swapResult = await swap(input)
+      const result: BridgeAndSwapResult = {
+        route,
+        ...(bridge !== undefined && { bridge }),
+        swap: swapResult,
+      }
+      input.onProgress?.({ phase: 'done', route, result })
+      return result
     },
 
     async bridgeToCore(input: BridgeInput): Promise<BridgeResult> {
@@ -150,6 +237,55 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
         validUntil: Date.now() + QUOTE_TTL_MS,
       }
     },
+  }
+
+  async function getRoute(input: RouteInput): Promise<SwapRoute> {
+    validateSwapInput(input)
+    if (input.from === 'USDT') {
+      throw new NotImplementedError('USDT routing lands in a follow-up PR')
+    }
+
+    const slippageBps = input.slippageBps ?? defaultSlippageBps
+    const pair = await resolvePair()
+    const book = await info.l2Book(pair.name)
+    const midPrice = midPrice18(book)
+    const quote: Quote = {
+      estimatedReceived: applyPriceInverse(input.amount, midPrice),
+      midPrice,
+      pair: pair.name,
+      validUntil: Date.now() + QUOTE_TTL_MS,
+    }
+
+    const hypercoreBalance = await readHypercoreSourceBalance(info, config.signer.address, pair)
+    const requiredSourceAmount =
+      input.amount + (input.amount * (BigInt(slippageBps) + HC_FEE_BUFFER_BPS)) / BPS_DENOMINATOR
+    const requiredHypercoreBalance = scaleAmount(
+      requiredSourceAmount,
+      STABLE_DECIMALS,
+      pair.quoteWeiDecimals,
+    )
+    const hypercoreCovers = hypercoreBalance >= requiredHypercoreBalance
+    const requestedSource = input.sourceChain ?? 'auto'
+    const sourceChain: SourceChain =
+      requestedSource === 'auto' ? (hypercoreCovers ? 'hypercore' : 'hyperevm') : requestedSource
+    const requiresBridge = sourceChain === 'hyperevm'
+    const canSwap = requiresBridge ? config.evmWallet !== undefined : hypercoreCovers
+
+    return {
+      from: input.from,
+      amount: input.amount,
+      sourceChain,
+      requiresBridge,
+      canSwap,
+      ...(!canSwap &&
+        (requiresBridge
+          ? { blockReason: 'missing_evm_wallet' as const }
+          : { blockReason: 'insufficient_hypercore_balance' as const })),
+      quote,
+      hypercoreBalance,
+      hypercoreDecimals: pair.quoteWeiDecimals,
+      requiredHypercoreBalance,
+    }
   }
 }
 
@@ -197,6 +333,25 @@ function finalizeFill(status: OrderStatus, midPrice: bigint, logger: Logger): Sw
     price: fillPrice18,
     slippageBps,
   }
+}
+
+async function readHypercoreSourceBalance(
+  info: InfoClient,
+  user: KitConfig['signer']['address'],
+  pair: ResolvedPair,
+): Promise<bigint> {
+  const state = await info.spotClearinghouseState(user)
+  const quoteTokenIndex = pair.tokens[1]
+  const row = state.balances.find((b) => b.token === quoteTokenIndex)
+  if (!row) return 0n
+  return parseDecimal(row.total, pair.quoteWeiDecimals)
+}
+
+function scaleAmount(amount: bigint, fromDecimals: number, toDecimals: number): bigint {
+  const diff = toDecimals - fromDecimals
+  if (diff === 0) return amount
+  if (diff > 0) return amount * 10n ** BigInt(diff)
+  return amount / 10n ** BigInt(-diff)
 }
 
 function validateConfig(config: KitConfig): void {

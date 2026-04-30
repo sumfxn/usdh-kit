@@ -25,7 +25,7 @@ packages/sdk/src
 
 ## Initial setup
 
-`createUsdhKit({ network, signer, evmWallet?, slippageBps?, fetch?, timeoutMs?, logger? })` validates the config synchronously and returns an object exposing `swap`, `getQuote`, `bridgeToCore`. Two transport clients are created lazily — one for read (`/info`) and one for write (`/exchange`).
+`createUsdhKit({ network, signer, evmWallet?, slippageBps?, fetch?, timeoutMs?, logger? })` validates the config synchronously and returns an object exposing `swap`, `getQuote`, `getRoute`, `preflightSwap`, `bridgeAndSwap`, and `bridgeToCore`. Two transport clients are created lazily — one for read (`/info`) and one for write (`/exchange`).
 
 The USDH/USDC pair is resolved on first call (cached for the kit's lifetime) by reading `spotMeta` and matching the canonical token names. This handles the case where Hyperliquid renumbers pair indices.
 
@@ -38,6 +38,25 @@ QuoteInput → resolvePair() → info.l2Book(pair.name) → midPrice18(book)
 ```
 
 No signing. No state. Quote is valid for 30 seconds (`validUntil`).
+
+## getRoute / preflightSwap
+
+```
+RouteInput
+  ↓ validate source + amount + slippage
+  ↓ resolvePair()
+  ↓ info.l2Book(pair.name) → Quote
+  ↓ info.spotClearinghouseState(user) → HyperCore source balance
+  ↓ requiredHypercoreBalance = amount + slippage buffer + HC fee buffer
+  ↓ choose sourceChain:
+      ├── HyperCore covers → sourceChain: 'hypercore'
+      └── otherwise        → sourceChain: 'hyperevm'
+  ↓ return SwapRoute { quote, sourceChain, requiresBridge, canSwap, balances }
+```
+
+`preflightSwap()` is an alias for `getRoute()` so UI code can use the name that
+best matches its intent. These helpers inspect HyperCore balance only; they do
+not read the user's HyperEVM ERC20 balance.
 
 ## swap (USDC path)
 
@@ -76,6 +95,24 @@ BridgeInput
 ```
 
 No explicit HyperCore-side signing — the credit is automatic once the EVM tx confirms and Hyperliquid's relayer indexes it.
+
+## bridgeAndSwap
+
+```
+BridgeAndSwapInput
+  ↓ getRoute()
+  ↓ if route is blocked:
+      ├── missing evmWallet → MissingEvmWalletError
+      └── forced HC shortfall → InsufficientBalanceError
+  ↓ if requiresBridge:
+      bridgeToCore({ asset: from, amount })
+  ↓ swap({ from, amount, slippageBps })
+  ↓ return BridgeAndSwapResult { route, bridge?, swap }
+```
+
+The helper emits optional progress events: `route`, `bridging`, `swapping`,
+`done`. It intentionally re-quotes inside `swap()` after a bridge completes so
+the order limit is based on fresh book state.
 
 ## Errors
 
