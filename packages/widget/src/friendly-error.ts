@@ -1,4 +1,5 @@
 import {
+  BridgeAndSwapError,
   BridgeTimeoutError,
   InsufficientBalanceError,
   InvalidInputError,
@@ -24,6 +25,9 @@ const HL_PROTOCOL_PREFIX = /^(HL error|exchange error|order error)/i
 export function friendlyError(err: unknown): string {
   if (isUserRejectedError(err)) {
     return 'Transaction rejected in your wallet.'
+  }
+  if (err instanceof BridgeAndSwapError) {
+    return friendlyError(err.cause)
   }
   if (err instanceof MissingEvmWalletError) {
     return 'Connect a wallet to continue.'

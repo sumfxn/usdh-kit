@@ -14,6 +14,7 @@ export type {
 } from './transport/types.js'
 
 export {
+  BridgeAndSwapError,
   BridgeTimeoutError,
   InsufficientBalanceError,
   InvalidInputError,

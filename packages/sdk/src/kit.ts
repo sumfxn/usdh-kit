@@ -1,5 +1,6 @@
 import { runBridgeToCore } from './bridge.js'
 import {
+  BridgeAndSwapError,
   InsufficientBalanceError,
   InvalidInputError,
   MissingEvmWalletError,
@@ -180,7 +181,13 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     },
 
     async bridgeAndSwap(input: BridgeAndSwapInput): Promise<BridgeAndSwapResult> {
-      const route = await getRoute(input)
+      let route: SwapRoute
+      try {
+        route = await getRoute(input)
+      } catch (err) {
+        if (err instanceof InvalidInputError || err instanceof NotImplementedError) throw err
+        throw new BridgeAndSwapError('route', err)
+      }
       input.onProgress?.({ phase: 'route', route })
 
       if (!route.canSwap) {
@@ -197,26 +204,35 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       let bridge: BridgeResult | undefined
       if (route.requiresBridge) {
         input.onProgress?.({ phase: 'bridging', route })
-        bridge = await runBridgeToCore(
-          {
-            asset: input.from,
-            amount: input.amount,
-            user: config.signer.address,
-            ...(input.waitForCreditTimeoutMs !== undefined && {
-              waitForCreditTimeoutMs: input.waitForCreditTimeoutMs,
-            }),
-          },
-          {
-            info,
-            evmWallet: config.evmWallet,
-            network: config.network,
-            logger,
-          },
-        )
+        try {
+          bridge = await runBridgeToCore(
+            {
+              asset: input.from,
+              amount: input.amount,
+              user: config.signer.address,
+              ...(input.waitForCreditTimeoutMs !== undefined && {
+                waitForCreditTimeoutMs: input.waitForCreditTimeoutMs,
+              }),
+            },
+            {
+              info,
+              evmWallet: config.evmWallet,
+              network: config.network,
+              logger,
+            },
+          )
+        } catch (err) {
+          throw new BridgeAndSwapError('bridging', err, route)
+        }
       }
 
       input.onProgress?.({ phase: 'swapping', route, ...(bridge !== undefined && { bridge }) })
-      const swapResult = await swap(input)
+      let swapResult: SwapResult
+      try {
+        swapResult = await swap(input)
+      } catch (err) {
+        throw new BridgeAndSwapError('swapping', err, route, bridge)
+      }
       const result: BridgeAndSwapResult = {
         route,
         ...(bridge !== undefined && { bridge }),

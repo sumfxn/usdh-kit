@@ -80,7 +80,11 @@ console.log(`got ${result.received} USDH for ${result.spent} USDC`)
 console.log(`realised slippage: ${result.slippageBps}bps`)
 
 // or let the SDK route, bridge if needed, then swap
-const routed = await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+const routed = await kit.bridgeAndSwap({
+  from: 'USDC',
+  amount: 1_000_000n,
+  onProgress: (event) => console.log(event.phase),
+})
 console.log(`route: ${routed.route.sourceChain}`)
 console.log(`order: ${routed.swap.orderId}`)
 ```
@@ -114,11 +118,12 @@ The widget defaults to `theme="auto"` (follows the user's system). Force a palet
 
 ## Use cases
 
-A few real flows you can build with `@usdh-kit/sdk` today. Each example in [`apps/examples/`](./apps/examples) is a runnable Node.js or Next.js app — copy and adapt.
+A few real flows the SDK is shaped for today. Runnable examples are still on the roadmap; until they land, treat these as the integration targets to copy into your own app.
 
-- **End-to-end CLI** ([`node-swap`](./apps/examples/node-swap)) — bridge + quote + swap from a private key on the command line. Smallest possible integration.
-- **Stripe → USDH** ([`payment-webhook`](./apps/examples/payment-webhook)) — receive a Stripe webhook, swap the USDC equivalent into USDH from a merchant wallet. Native `node:http` server.
-- **Treasury rebalance** ([`treasury-rebalance`](./apps/examples/treasury-rebalance)) — scheduled job that converts a fraction of HyperCore USDC above a floor into USDH. Designed for cron.
+- **End-to-end CLI** — bridge + quote + swap from a private key on the command line. Smallest possible integration.
+- **Discord bot** — slash command that quotes `USDC → USDH`, confirms the route, then calls `bridgeAndSwap()` with progress updates.
+- **Subscription billing** — collect or rebalance USDC into USDH from a merchant wallet after a payment webhook.
+- **Treasury rebalance** — scheduled job that converts a fraction of HyperCore USDC above a floor into USDH. Designed for cron.
 
 ## Features (V1)
 
@@ -127,7 +132,7 @@ A few real flows you can build with `@usdh-kit/sdk` today. Each example in [`app
 - HyperCore balance, route/preflight helpers plus `bridgeAndSwap()` orchestration
 - Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 - Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book) for consumers building custom UIs
-- Typed error hierarchy rooted at `UsdhKitError` for clean `instanceof` handling
+- Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context for orchestration failures
 - `friendlyError()` helper to map SDK errors to short, copy-safe strings
 - React widget (`@usdh-kit/widget`) with light, dark and auto theming (WCAG AA defaults, CSS variables for integrator overrides)
 - npm provenance on every release

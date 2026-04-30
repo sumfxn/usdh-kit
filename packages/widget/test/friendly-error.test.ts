@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  BridgeAndSwapError,
   BridgeTimeoutError,
   InsufficientBalanceError,
   InvalidInputError,
@@ -40,6 +41,11 @@ describe('friendlyError', () => {
     const err = new BridgeTimeoutError('0xabcd', 30_000)
     expect(friendlyError(err)).toMatch(/Bridge timed out/i)
     expect(friendlyError(err)).toMatch(/Funds are safe/i)
+  })
+
+  it('unwraps BridgeAndSwapError causes for user-facing copy', () => {
+    const err = new BridgeAndSwapError('bridging', new Error('wallet offline'))
+    expect(friendlyError(err)).toBe('wallet offline')
   })
 
   it('maps InsufficientBalanceError to an asset-specific prompt', () => {

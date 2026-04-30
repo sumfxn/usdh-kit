@@ -22,6 +22,22 @@ The EVM transfer succeeded but the HyperCore credit did not land within the poll
 
 Retry the bridge call with the same arguments. The kit re-checks the HC balance and resolves once the credit appears, even if from a previous tx.
 
+### `BridgeAndSwapError: bridgeAndSwap failed during bridging: ...`
+
+`bridgeAndSwap()` wraps unexpected route, bridge, and swap failures with lifecycle context. Inspect `phase` for UI copy and `cause` for the underlying typed error. Do not parse the message string.
+
+```ts
+try {
+  await kit.bridgeAndSwap({ from: 'USDC', amount, onProgress })
+} catch (err) {
+  if (err instanceof BridgeAndSwapError) {
+    console.error(err.phase, err.route, err.bridge, err.cause)
+  }
+}
+```
+
+Preflight blockers still throw their original classes (`MissingEvmWalletError`, `InsufficientBalanceError`) so existing `instanceof` checks keep working.
+
 ### `InsufficientBalanceError: Insufficient USDC: 1000000 needed, 500000 available`
 
 Pre-flight balance check failed. The widget's source-chain pill exposes both EVM and HC balances side by side so users can flip to the chain they're funded on. CLI consumers should top up the source wallet before the call.

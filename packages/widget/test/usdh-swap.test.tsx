@@ -117,6 +117,16 @@ vi.mock('@usdh-kit/sdk', () => ({
     spotMeta: vi.fn(),
     spotClearinghouseState: vi.fn(),
   }),
+  BridgeAndSwapError: class extends Error {
+    phase: string
+    cause: unknown
+
+    constructor(phase: string, cause: unknown) {
+      super(cause instanceof Error ? cause.message : String(cause))
+      this.phase = phase
+      this.cause = cause
+    }
+  },
   BridgeTimeoutError: class extends Error {},
   InsufficientBalanceError: class extends Error {},
   InvalidInputError: class extends Error {},

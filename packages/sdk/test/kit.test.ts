@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  BridgeAndSwapError,
   InsufficientBalanceError,
   InvalidInputError,
   MissingEvmWalletError,
@@ -517,5 +518,71 @@ describe('bridgeAndSwap', () => {
     await expect(
       kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n, sourceChain: 'hypercore' }),
     ).rejects.toThrow(InsufficientBalanceError)
+  })
+
+  it('wraps route failures with lifecycle context', async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error('info offline')
+    }) as unknown as typeof globalThis.fetch
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    let thrown: unknown
+    try {
+      await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeInstanceOf(BridgeAndSwapError)
+    const err = thrown as BridgeAndSwapError
+    expect(err.phase).toBe('route')
+    expect(err.route).toBeUndefined()
+    expect(err.bridge).toBeUndefined()
+    expect(err.cause).toBeInstanceOf(NetworkError)
+  })
+
+  it('wraps bridge failures with lifecycle context', async () => {
+    const { fetch } = routingBackend(filledResponse, ['0'])
+    const evmWallet: EvmWallet = {
+      address: stubSigner.address,
+      sendTransaction: async () => {
+        throw new Error('wallet offline')
+      },
+    }
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, evmWallet, fetch })
+
+    let thrown: unknown
+    try {
+      await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeInstanceOf(BridgeAndSwapError)
+    const err = thrown as BridgeAndSwapError
+    expect(err.phase).toBe('bridging')
+    expect(err.route?.sourceChain).toBe('hyperevm')
+    expect(err.bridge).toBeUndefined()
+    expect(err.cause).toBeInstanceOf(Error)
+    expect(err.message).toContain('wallet offline')
+  })
+
+  it('wraps swap failures with lifecycle context', async () => {
+    const { fetch } = routingBackend({ status: 'err', response: 'Insufficient margin' }, ['2'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    let thrown: unknown
+    try {
+      await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeInstanceOf(BridgeAndSwapError)
+    const err = thrown as BridgeAndSwapError
+    expect(err.phase).toBe('swapping')
+    expect(err.route?.sourceChain).toBe('hypercore')
+    expect(err.bridge).toBeUndefined()
+    expect(err.cause).toBeInstanceOf(NetworkError)
   })
 })
