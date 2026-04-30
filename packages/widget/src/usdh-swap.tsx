@@ -202,37 +202,40 @@ export function USDHSwap(props: USDHSwapProps) {
   async function executeBridgeAndSwap() {
     if (!kit || parsedAmount === null || parsedAmount <= 0n) return
     // Hard guard against double-clicks: setPhase is async, so without this a
-    // synchronous double-tap can dispatch two bridge tx requests before the
-    // button's disabled state commits.
+    // synchronous double-tap can dispatch two tx requests before the button's
+    // disabled state commits.
     if (phase !== 'idle') return
     setError(null)
     setResult(null)
-    let txHash: `0x${string}` | undefined
-    if (requiresBridge) {
-      setPhase('bridging')
-      try {
-        const bridge = await kit.bridgeToCore({ asset: 'USDC', amount: parsedAmount })
-        txHash = bridge.txHash
-      } catch (err) {
-        setError(`Bridge failed: ${friendlyError(err)}`)
-        setPhase('idle')
-        return
-      }
-    }
-    setPhase('swapping')
+
+    let failurePrefix = ''
     try {
-      const swap = await kit.swap({ from: 'USDC', amount: parsedAmount, slippageBps })
+      const next = await kit.bridgeAndSwap({
+        from: 'USDC',
+        amount: parsedAmount,
+        slippageBps,
+        sourceChain:
+          manualSource === 'hc' ? 'hypercore' : manualSource === 'evm' ? 'hyperevm' : 'auto',
+        onProgress: (event) => {
+          setRoute(event.route)
+          setQuote(event.route.quote)
+          if (event.phase === 'bridging' || event.phase === 'swapping') {
+            failurePrefix = event.phase === 'bridging' ? 'Bridge failed: ' : 'Swap failed: '
+            setPhase(event.phase)
+          }
+        },
+      })
       const payload: SwapResultPayload = {
-        orderId: swap.orderId,
-        receivedUsdh: swap.received,
-        ...(txHash !== undefined && { txHash }),
+        orderId: next.swap.orderId,
+        receivedUsdh: next.swap.received,
+        ...(next.bridge?.txHash !== undefined && { txHash: next.bridge.txHash }),
       }
       setResult(payload)
       setPhase('done')
       balances.refetch()
       onSwapComplete?.(payload)
     } catch (err) {
-      setError(`Swap failed: ${friendlyError(err)}`)
+      setError(`${failurePrefix}${friendlyError(err)}`)
       setPhase('idle')
     }
   }

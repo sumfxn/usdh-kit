@@ -44,8 +44,7 @@ vi.mock('@tanstack/react-query', () => ({
 }))
 
 const mockPreflightSwap = vi.fn()
-const mockBridgeToCore = vi.fn()
-const mockSwap = vi.fn()
+const mockBridgeAndSwap = vi.fn()
 
 function makeQuote(estimatedReceived = 1_000_000n) {
   return {
@@ -87,11 +86,32 @@ function makeRoute(
   }
 }
 
+function makeBridgeAndSwapResult(
+  overrides: Partial<{
+    route: ReturnType<typeof makeRoute>
+    bridge: { txHash: `0x${string}` }
+    orderId: string
+    received: bigint
+  }> = {},
+) {
+  const route = overrides.route ?? makeRoute()
+  return {
+    route,
+    ...(overrides.bridge !== undefined && { bridge: overrides.bridge }),
+    swap: {
+      orderId: overrides.orderId ?? 'order-42',
+      received: overrides.received ?? 1_000_000n,
+      spent: route.amount,
+      price: 1_000_000_000_000_000_000n,
+      slippageBps: 0,
+    },
+  }
+}
+
 vi.mock('@usdh-kit/sdk', () => ({
   createUsdhKit: () => ({
     preflightSwap: mockPreflightSwap,
-    bridgeToCore: mockBridgeToCore,
-    swap: mockSwap,
+    bridgeAndSwap: mockBridgeAndSwap,
   }),
   createInfoClient: () => ({
     spotMeta: vi.fn(),
@@ -132,6 +152,7 @@ describe('USDHSwap', () => {
     })
     mockHcQueryData.mockReturnValue(undefined)
     mockPreflightSwap.mockResolvedValue(makeRoute())
+    mockBridgeAndSwap.mockResolvedValue(makeBridgeAndSwapResult())
     mockUseReadContract.mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn() })
   })
 
@@ -294,32 +315,96 @@ describe('USDHSwap', () => {
     expect(button).toBeDisabled()
 
     fireEvent.click(button)
-    expect(mockBridgeToCore).not.toHaveBeenCalled()
-    expect(mockSwap).not.toHaveBeenCalled()
+    expect(mockBridgeAndSwap).not.toHaveBeenCalled()
   })
 
   it('shows the inline system-address note up front and runs bridge+swap directly on click', async () => {
     setConnected()
     mockPreflightSwap.mockResolvedValue(makeRoute())
-    mockBridgeToCore.mockResolvedValue({ txHash: '0xabcdef0123456789abcdef0123456789abcdef01' })
-    mockSwap.mockResolvedValue({ orderId: 'order-42', received: 1_000_000n })
+    mockBridgeAndSwap.mockResolvedValue(
+      makeBridgeAndSwapResult({
+        bridge: { txHash: '0xabcdef0123456789abcdef0123456789abcdef01' },
+      }),
+    )
     const onSwapComplete = vi.fn()
 
     render(<USDHSwap network="mainnet" onSwapComplete={onSwapComplete} />)
 
     // Inline note shows the system address up front, no intermediate confirm
-    // card; clicking the action button fires the bridge tx directly.
+    // card; clicking the action button delegates the lifecycle to the SDK.
     expect(screen.getByText(/0x2000…0000/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Bridge and swap' }))
 
     await waitFor(() => {
       expect(screen.getByText('Filled')).toBeInTheDocument()
     })
-    expect(mockBridgeToCore).toHaveBeenCalledWith({ asset: 'USDC', amount: 1_000_000n })
+    expect(mockBridgeAndSwap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: 'USDC',
+        amount: 1_000_000n,
+        slippageBps: 30,
+        sourceChain: 'auto',
+        onProgress: expect.any(Function),
+      }),
+    )
     expect(onSwapComplete).toHaveBeenCalledWith({
       orderId: 'order-42',
       receivedUsdh: 1_000_000n,
       txHash: '0xabcdef0123456789abcdef0123456789abcdef01',
+    })
+  })
+
+  it('maps bridgeAndSwap progress events onto the primary button state', async () => {
+    setConnected()
+    const bridge = { txHash: '0xabcdef0123456789abcdef0123456789abcdef01' as const }
+    let startSwap: () => void = () => {}
+    let finishSwap: () => void = () => {}
+    mockBridgeAndSwap.mockImplementation(async ({ onProgress }) => {
+      const route = makeRoute()
+      onProgress({ phase: 'route', route })
+      onProgress({ phase: 'bridging', route })
+      await new Promise<void>((resolve) => {
+        startSwap = resolve
+      })
+      onProgress({ phase: 'swapping', route, bridge })
+      await new Promise<void>((resolve) => {
+        finishSwap = resolve
+      })
+      return makeBridgeAndSwapResult({ bridge })
+    })
+
+    render(<USDHSwap network="mainnet" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bridge and swap' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Bridging/ })).toBeDisabled()
+    })
+
+    startSwap()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Swapping/ })).toBeDisabled()
+    })
+
+    finishSwap()
+    await waitFor(() => {
+      expect(screen.getByText('Filled')).toBeInTheDocument()
+    })
+  })
+
+  it('keeps bridge failures labeled by lifecycle phase', async () => {
+    setConnected()
+    mockBridgeAndSwap.mockImplementation(async ({ onProgress }) => {
+      const route = makeRoute()
+      onProgress({ phase: 'bridging', route })
+      throw new Error('deposit rejected')
+    })
+
+    render(<USDHSwap network="mainnet" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bridge and swap' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Bridge failed: deposit rejected')
     })
   })
 
@@ -335,7 +420,16 @@ describe('USDHSwap', () => {
         hypercoreBalance: 150_000_000n,
       }),
     )
-    mockSwap.mockResolvedValue({ orderId: 'order-7', received: 1_000_000n })
+    mockBridgeAndSwap.mockResolvedValue(
+      makeBridgeAndSwapResult({
+        route: makeRoute({
+          sourceChain: 'hypercore',
+          requiresBridge: false,
+          hypercoreBalance: 150_000_000n,
+        }),
+        orderId: 'order-7',
+      }),
+    )
 
     render(<USDHSwap network="mainnet" />)
 
@@ -352,8 +446,9 @@ describe('USDHSwap', () => {
     await waitFor(() => {
       expect(screen.getByText('Filled')).toBeInTheDocument()
     })
-    expect(mockBridgeToCore).not.toHaveBeenCalled()
-    expect(mockSwap).toHaveBeenCalled()
+    expect(mockBridgeAndSwap).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceChain: 'auto', onProgress: expect.any(Function) }),
+    )
   })
 
   it('lets the user toggle source chain via the pill button', async () => {
