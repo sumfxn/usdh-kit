@@ -45,6 +45,17 @@ describe('createInfoClient', () => {
     expect(() => createInfoClient({ network: 'mainnet' })).not.toThrow()
   })
 
+  it('rejects an invalid network synchronously', () => {
+    expect(() =>
+      // biome-ignore lint/suspicious/noExplicitAny: deliberately bad input
+      createInfoClient({ network: 'devnet' as any }),
+    ).toThrow(InvalidInputError)
+  })
+
+  it('rejects non-positive timeouts synchronously', () => {
+    expect(() => createInfoClient({ network: 'mainnet', timeoutMs: 0 })).toThrow(InvalidInputError)
+  })
+
   it('targets the mainnet endpoint', async () => {
     const fetch = vi.fn(async () => jsonResponse(sampleSpotMeta))
     const client = createInfoClient({ network: 'mainnet', fetch })
