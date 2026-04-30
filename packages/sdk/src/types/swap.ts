@@ -1,3 +1,5 @@
+import type { BridgeResult } from './bridge.js'
+
 /** Stablecoins accepted as swap input. */
 export type SourceStable = 'USDC' | 'USDT'
 
@@ -8,6 +10,55 @@ export interface SwapInput {
   amount: bigint
   /** Override the kit's default `slippageBps` for this call. */
   slippageBps?: number
+}
+
+/** Where the source stable is expected to come from. */
+export type SourceChain = 'hypercore' | 'hyperevm'
+
+export interface RouteInput extends SwapInput {
+  /**
+   * Source-chain preference. Defaults to `auto`: use HyperCore when the user
+   * already has enough source balance there, otherwise route through the
+   * HyperEVM bridge.
+   */
+  sourceChain?: SourceChain | 'auto'
+}
+
+export type RouteBlockReason = 'insufficient_hypercore_balance' | 'missing_evm_wallet'
+
+export interface SwapRoute {
+  from: SourceStable
+  amount: bigint
+  sourceChain: SourceChain
+  requiresBridge: boolean
+  canSwap: boolean
+  blockReason?: RouteBlockReason
+  quote: Quote
+  /** HyperCore source-token balance in HyperCore native units. */
+  hypercoreBalance: bigint
+  /** HyperCore source-token decimals. */
+  hypercoreDecimals: number
+  /** Required HyperCore source-token balance for a direct swap, including buffers. */
+  requiredHypercoreBalance: bigint
+}
+
+export interface BridgeAndSwapInput extends RouteInput {
+  /** Override the default bridge credit poll timeout (ms). Defaults to 30_000. */
+  waitForCreditTimeoutMs?: number
+  /** Optional lifecycle callback for apps that want progress UI. */
+  onProgress?: (event: BridgeAndSwapEvent) => void
+}
+
+export type BridgeAndSwapEvent =
+  | { phase: 'route'; route: SwapRoute }
+  | { phase: 'bridging'; route: SwapRoute }
+  | { phase: 'swapping'; route: SwapRoute; bridge?: BridgeResult }
+  | { phase: 'done'; route: SwapRoute; result: BridgeAndSwapResult }
+
+export interface BridgeAndSwapResult {
+  route: SwapRoute
+  bridge?: BridgeResult
+  swap: SwapResult
 }
 
 export interface SwapResult {
