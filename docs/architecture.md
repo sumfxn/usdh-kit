@@ -125,7 +125,7 @@ All SDK errors extend `UsdhKitError`. Subclasses give consumers `instanceof` gra
 - `MissingEvmWalletError` — `bridgeToCore` called without `evmWallet`
 - `InsufficientBalanceError` — pre-flight balance check failed
 - `BridgeTimeoutError` — credit never landed within timeout
-- `BridgeAndSwapError` — wraps unexpected `bridgeAndSwap` route, bridge, or swap failures with `phase`, `route`, optional `bridge`, and `cause`
+- `BridgeAndSwapError` — wraps unexpected `bridgeAndSwap` route, bridge, or swap failures with `phase`, `route`, optional `bridge`, and `cause`; `isBridgeAndSwapError()` narrows both class instances and structural copies
 - `InvalidInputError` — amount, decimal string, or other input is malformed
 - `SigningError` — `signer.signTypedData` rejected or returned invalid sig
 - `NetworkError` — `/info` or `/exchange` fetch failed, or HL returned a protocol-level error
