@@ -1,16 +1,33 @@
 # usdh-kit
 
 [![CI](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
-[![License: MIT](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
+[![Built for Hyperliquid](https://img.shields.io/badge/built%20for-Hyperliquid-000000?style=flat)](https://hyperliquid.xyz)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-000000?style=flat&logo=typescript&logoColor=white)](./tsconfig.base.json)
+[![Node](https://img.shields.io/badge/node-%3E%3D18.18-000000?style=flat&logo=nodedotjs&logoColor=white)](./package.json)
+[![Last commit](https://img.shields.io/github/last-commit/sumfxn/usdh-kit?style=flat&color=000000)](https://github.com/sumfxn/usdh-kit/commits/main)
+[![Issues](https://img.shields.io/github/issues/sumfxn/usdh-kit?style=flat&color=000000)](https://github.com/sumfxn/usdh-kit/issues)
+[![License](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
+
+<!--
+  npm-dependent badges, intentionally commented until @usdh-kit/sdk and
+  @usdh-kit/widget are published. Uncomment as part of the first npm
+  publish PR (gated on testnet IRL session per the project roadmap).
+
+  [![@usdh-kit/sdk](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000&label=%40usdh-kit%2Fsdk)](https://www.npmjs.com/package/@usdh-kit/sdk)
+  [![@usdh-kit/widget](https://img.shields.io/npm/v/@usdh-kit/widget?style=flat&color=000000&label=%40usdh-kit%2Fwidget)](https://www.npmjs.com/package/@usdh-kit/widget)
+  [![Downloads](https://img.shields.io/npm/dm/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
+  [![Bundle](https://img.shields.io/bundlephobia/minzip/@usdh-kit/sdk?style=flat&color=000000&label=sdk%20gzipped)](https://bundlephobia.com/package/@usdh-kit/sdk)
+-->
+
 
 TypeScript SDK and React widget to swap stablecoins into USDH on Hyperliquid.
 
 USDH is the native stablecoin on Hyperliquid, issued by Bridge and designed by Native Markets, with 50% of reserve revenue routed to the Hyperliquid Assistance Fund. `@usdh-kit/sdk` ships the retail-side plumbing (pair resolution, signing, transport) so apps and bots can convert into USDH without writing the Hyperliquid action layer themselves. `@usdh-kit/widget` is an embeddable React component on top of the SDK so dapps can drop in a swap form in a few lines.
 
 - **Source:** [github.com/sumfxn/usdh-kit](https://github.com/sumfxn/usdh-kit)
-- **Discussions / issues:** [github.com/sumfxn/usdh-kit/issues](https://github.com/sumfxn/usdh-kit/issues)
-- **Hyperliquid docs:** [hyperliquid.gitbook.io](https://hyperliquid.gitbook.io/hyperliquid-docs)
+- **Issues:** [github.com/sumfxn/usdh-kit/issues](https://github.com/sumfxn/usdh-kit/issues)
+- **USDH:** [usdh.com](https://usdh.com) (issued by [Bridge](https://bridge.xyz), designed by [Native Markets](https://www.nativemarkets.com))
+- **Hyperliquid:** [hyperliquid.xyz](https://hyperliquid.xyz) · [docs](https://hyperliquid.gitbook.io/hyperliquid-docs)
 
 ## Status
 

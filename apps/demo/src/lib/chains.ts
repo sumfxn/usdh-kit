@@ -7,6 +7,9 @@ export const hyperEvmMainnet = defineChain({
   rpcUrls: {
     default: { http: ['https://rpc.hyperliquid.xyz/evm'] },
   },
+  blockExplorers: {
+    default: { name: 'Hyperscan', url: 'https://www.hyperscan.com' },
+  },
 })
 
 export const hyperEvmTestnet = defineChain({
@@ -15,6 +18,9 @@ export const hyperEvmTestnet = defineChain({
   nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 },
   rpcUrls: {
     default: { http: ['https://rpc.hyperliquid-testnet.xyz/evm'] },
+  },
+  blockExplorers: {
+    default: { name: 'Purrsec Testnet', url: 'https://testnet.purrsec.com' },
   },
   testnet: true,
 })
