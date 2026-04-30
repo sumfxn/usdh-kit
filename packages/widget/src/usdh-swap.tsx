@@ -1,6 +1,6 @@
 'use client'
 
-import type { Quote } from '@usdh-kit/sdk'
+import type { Quote, SwapRoute } from '@usdh-kit/sdk'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useChainId, useSwitchChain } from 'wagmi'
 
@@ -28,12 +28,6 @@ import { Watermark } from './watermark.js'
 
 const USDC_DECIMALS = 6
 const QUOTE_DEBOUNCE_MS = 400
-// Reserve over the user's slippage on top of the trade size so an HC-only
-// swap doesn't reject post-confirm because the fill consumed a few extra bps
-// of USDC for the spot taker fee. 10 bps covers the default-tier 7 bps fee
-// with headroom.
-const HC_FEE_BUFFER_BPS = 10n
-const BPS_DENOMINATOR = 10_000n
 
 type Phase = 'idle' | 'bridging' | 'swapping' | 'done'
 
@@ -83,6 +77,7 @@ export function USDHSwap(props: USDHSwapProps) {
   const [showCustomSlippage, setShowCustomSlippage] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [quote, setQuote] = useState<Quote | null>(null)
+  const [route, setRoute] = useState<SwapRoute | null>(null)
   const [isQuoting, setIsQuoting] = useState(false)
   const [result, setResult] = useState<SwapResultPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -112,10 +107,12 @@ export function USDHSwap(props: USDHSwapProps) {
   }, [amountStr])
 
   const quoteRequestId = useRef(0)
+  const [manualSource, setManualSource] = useState<SourceChain | null>(null)
 
   useEffect(() => {
     const requestId = ++quoteRequestId.current
     setQuote(null)
+    setRoute(null)
     if (!kit || onWrongChain) {
       setIsQuoting(false)
       return
@@ -128,9 +125,16 @@ export function USDHSwap(props: USDHSwapProps) {
       setError(null)
       setIsQuoting(true)
       try {
-        const q = await kit.getQuote({ from: 'USDC', amount: parsedAmount })
+        const nextRoute = await kit.preflightSwap({
+          from: 'USDC',
+          amount: parsedAmount,
+          slippageBps,
+          sourceChain:
+            manualSource === 'hc' ? 'hypercore' : manualSource === 'evm' ? 'hyperevm' : 'auto',
+        })
         if (requestId !== quoteRequestId.current) return
-        setQuote(q)
+        setRoute(nextRoute)
+        setQuote(nextRoute.quote)
       } catch (err) {
         if (requestId !== quoteRequestId.current) return
         setError(friendlyError(err))
@@ -139,20 +143,9 @@ export function USDHSwap(props: USDHSwapProps) {
       }
     }, QUOTE_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [kit, parsedAmount, onWrongChain])
+  }, [kit, parsedAmount, slippageBps, manualSource, onWrongChain])
 
-  // Required HC balance to swap directly on HyperCore: nominal amount plus a
-  // slippage + fee buffer so the IOC fill doesn't reject for a dust shortfall.
-  const requiredHcUsdc =
-    parsedAmount !== null && parsedAmount > 0n
-      ? parsedAmount + (parsedAmount * (BigInt(slippageBps) + HC_FEE_BUFFER_BPS)) / BPS_DENOMINATOR
-      : null
-
-  const hcCovers =
-    requiredHcUsdc !== null &&
-    balances.hc !== undefined &&
-    balances.hcDecimals !== undefined &&
-    scaleAmount(requiredHcUsdc, balances.hcDecimals - USDC_DECIMALS) <= balances.hc
+  const hcCovers = route?.sourceChain === 'hypercore' && route.canSwap
 
   const evmCovers =
     parsedAmount !== null &&
@@ -166,20 +159,22 @@ export function USDHSwap(props: USDHSwapProps) {
   // Hold on the conservative default ("evm", bridge required) until both
   // balances are loaded — otherwise the pill flips out from under the user
   // when the HC query resolves a tick after the EVM query.
-  const balancesLoaded = balances.hc !== undefined && balances.evm !== undefined
-  const autoSource: SourceChain = balancesLoaded && hcCovers ? 'hc' : 'evm'
-  const [manualSource, setManualSource] = useState<SourceChain | null>(null)
+  const hcBalance = route?.hypercoreBalance ?? balances.hc
+  const hcDecimals = route?.hypercoreDecimals ?? balances.hcDecimals
+  const routedBalances = { ...balances, hc: hcBalance, hcDecimals }
+  const balancesLoaded = hcBalance !== undefined && balances.evm !== undefined
+  const autoSource: SourceChain = route?.sourceChain === 'hypercore' ? 'hc' : 'evm'
   const sourceChain = manualSource ?? autoSource
 
   const requiresBridge = sourceChain === 'evm'
   const insufficientForRoute =
     parsedAmount !== null &&
     parsedAmount > 0n &&
-    ((sourceChain === 'hc' && balances.hc !== undefined && !hcCovers) ||
+    ((sourceChain === 'hc' && route !== null && !hcCovers) ||
       (sourceChain === 'evm' && balances.evm !== undefined && !evmCovers))
   const activeRouteLoaded =
     sourceChain === 'hc'
-      ? balances.hc !== undefined && balances.hcDecimals !== undefined
+      ? route !== null
       : balances.evm !== undefined && balances.evmDecimals !== undefined
   const activeRouteCovers = sourceChain === 'hc' ? hcCovers : evmCovers
 
@@ -272,8 +267,8 @@ export function USDHSwap(props: USDHSwapProps) {
   const receiveUsdValue = receiveBigint ? formatUsd(receiveBigint, USDC_DECIMALS) : null
 
   // Active source drives the MAX button.
-  const activeBalance = sourceChain === 'evm' ? balances.evm : balances.hc
-  const activeDecimals = sourceChain === 'evm' ? balances.evmDecimals : balances.hcDecimals
+  const activeBalance = sourceChain === 'evm' ? balances.evm : hcBalance
+  const activeDecimals = sourceChain === 'evm' ? balances.evmDecimals : hcDecimals
 
   function setMaxAmount() {
     if (activeBalance === undefined || activeDecimals === undefined) return
@@ -325,7 +320,7 @@ export function USDHSwap(props: USDHSwapProps) {
               sourceChain={sourceChain}
               onSourceToggle={toggleSourceChain}
               payUsdValue={payUsdValue}
-              balances={balances}
+              balances={routedBalances}
               balancesLoaded={balancesLoaded}
               hasMaxBalance={hasMaxBalance}
               onMax={setMaxAmount}
