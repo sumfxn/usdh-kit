@@ -41,6 +41,8 @@ export type {
   BridgeAndSwapEvent,
   BridgeAndSwapInput,
   BridgeAndSwapResult,
+  HypercoreBalance,
+  HypercoreBalanceInput,
   Quote,
   QuoteInput,
   RouteBlockReason,

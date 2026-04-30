@@ -79,9 +79,11 @@ function backend(exchangeResponse: unknown): {
   return { fetch, getExchangeBody: () => exchangeBody }
 }
 
+type HcBalanceFixture = string | { total: string; hold?: string }
+
 function routingBackend(
   exchangeResponse: unknown,
-  hcBalances: string[] = ['0'],
+  hcBalances: HcBalanceFixture[] = ['0'],
 ): {
   fetch: typeof fetch
   getExchangeBody: () => Record<string, unknown> | undefined
@@ -95,10 +97,12 @@ function routingBackend(
       if (body.type === 'spotMeta') return jsonResponse(sampleSpotMeta)
       if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
       if (body.type === 'spotClearinghouseState') {
-        const total = hcBalances[Math.min(balanceIndex, hcBalances.length - 1)] ?? '0'
+        const fixture = hcBalances[Math.min(balanceIndex, hcBalances.length - 1)] ?? '0'
         balanceIndex += 1
+        const total = typeof fixture === 'string' ? fixture : fixture.total
+        const hold = typeof fixture === 'string' ? '0' : (fixture.hold ?? '0')
         return jsonResponse({
-          balances: [{ coin: 'USDC', token: 0, total, hold: '0', entryNtl: '0' }],
+          balances: [{ coin: 'USDC', token: 0, total, hold, entryNtl: '0' }],
         })
       }
       throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
@@ -343,6 +347,56 @@ describe('getRoute', () => {
     expect(route.requiresBridge).toBe(false)
     expect(route.canSwap).toBe(true)
     expect(route.hypercoreBalance).toBe(200_000_000n)
+    expect(route.hypercoreTotal).toBe(200_000_000n)
+    expect(route.hypercoreHold).toBe(0n)
+  })
+
+  it('routes through HyperEVM when HC total covers but open-order hold leaves it short', async () => {
+    const { fetch } = routingBackend({}, [{ total: '2', hold: '1.5' }])
+    const kit = createUsdhKit({
+      network: 'mainnet',
+      signer: stubSigner,
+      evmWallet: stubEvmWallet(),
+      fetch,
+    })
+
+    const route = await kit.getRoute({ from: 'USDC', amount: 1_000_000n })
+
+    expect(route.sourceChain).toBe('hyperevm')
+    expect(route.requiresBridge).toBe(true)
+    expect(route.hypercoreBalance).toBe(50_000_000n)
+    expect(route.hypercoreTotal).toBe(200_000_000n)
+    expect(route.hypercoreHold).toBe(150_000_000n)
+  })
+
+  it("returns the user's HyperCore balance net of held funds", async () => {
+    const { fetch } = routingBackend({}, [{ total: '2', hold: '0.75' }])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    const balance = await kit.getHypercoreBalance({ asset: 'USDC' })
+
+    expect(balance).toEqual({
+      asset: 'USDC',
+      tokenIndex: 0,
+      decimals: 8,
+      total: 200_000_000n,
+      hold: 75_000_000n,
+      available: 125_000_000n,
+    })
+  })
+
+  it('validates sourceChain at runtime', async () => {
+    const { fetch } = routingBackend({}, ['2'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    await expect(
+      kit.getRoute({
+        from: 'USDC',
+        amount: 1_000_000n,
+        // biome-ignore lint/suspicious/noExplicitAny: deliberately bad input
+        sourceChain: 'core' as any,
+      }),
+    ).rejects.toThrow(InvalidInputError)
   })
 
   it('routes through HyperEVM when HyperCore balance is short and an EVM wallet is configured', async () => {

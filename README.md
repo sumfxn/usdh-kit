@@ -37,6 +37,7 @@ What works today:
 
 - `getQuote()` and `swap()` for `USDC → USDH` end to end (signing + msgpack + IOC limit submission)
 - `bridgeToCore()` for moving USDC from HyperEVM to HyperCore, with credit polling
+- `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 - `getRoute()` / `preflightSwap()` to choose direct HyperCore swap vs HyperEVM bridge
 - `bridgeAndSwap()` for the common route → bridge → swap retail flow
 - React widget with built-in source-chain selection (HyperEVM bridge or direct HyperCore swap), friendly errors, and full theming via CSS variables
@@ -123,7 +124,7 @@ A few real flows you can build with `@usdh-kit/sdk` today. Each example in [`app
 
 - `USDC → USDH` quote and swap via the canonical HL spot pair
 - HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
-- Route/preflight helpers plus `bridgeAndSwap()` orchestration
+- HyperCore balance, route/preflight helpers plus `bridgeAndSwap()` orchestration
 - Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 - Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book) for consumers building custom UIs
 - Typed error hierarchy rooted at `UsdhKitError` for clean `instanceof` handling
