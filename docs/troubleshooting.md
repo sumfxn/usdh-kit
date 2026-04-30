@@ -94,7 +94,7 @@ Without this, every `var(--usdh-*)` falls back to `currentColor`. See [theming](
 Default `theme="auto"` follows `prefers-color-scheme`. If your app's page background is hardcoded dark while your OS is in light mode, you'll see a light widget on a dark page. Either:
 
 - Make your page background follow `prefers-color-scheme` too (recommended), or
-- Force the widget with `<USDHSwap theme="dark" />`
+- Force the widget with `<USDHSwap network="mainnet" theme="dark" />`
 
 ### SSR flash light → dark on first paint
 

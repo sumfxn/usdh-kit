@@ -92,12 +92,12 @@ describe('USDHSwap', () => {
     mockUseReadContract.mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn() })
   })
 
-  it('defaults to mainnet and shows the network toggle pill', () => {
+  it('uses the required mainnet prop and shows the network toggle pill', () => {
     mockUseAccount.mockReturnValue({ isConnected: false })
     mockUseWalletClient.mockReturnValue({ data: undefined })
     mockUseChainId.mockReturnValue(0)
 
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     expect(screen.getByRole('button', { name: 'Mainnet' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Testnet' })).toHaveAttribute('aria-pressed', 'false')
@@ -113,10 +113,23 @@ describe('USDHSwap', () => {
     expect(screen.getByText(/Connect a wallet on HyperEVM Testnet/)).toBeInTheDocument()
   })
 
+  it('syncs the internal network when the required network prop changes', () => {
+    mockUseAccount.mockReturnValue({ isConnected: false })
+    mockUseWalletClient.mockReturnValue({ data: undefined })
+    mockUseChainId.mockReturnValue(0)
+
+    const { rerender } = render(<USDHSwap network="mainnet" />)
+    expect(screen.getByRole('button', { name: 'Mainnet' })).toHaveAttribute('aria-pressed', 'true')
+
+    rerender(<USDHSwap network="testnet" />)
+    expect(screen.getByRole('button', { name: 'Testnet' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/Connect a wallet on HyperEVM Testnet/)).toBeInTheDocument()
+  })
+
   it('renders the wrong-network row with a Switch button when chain id mismatches', () => {
     setConnected({ chainId: 1 })
 
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     expect(screen.getByText('Wrong network')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Switch/ })).toBeInTheDocument()
@@ -125,7 +138,7 @@ describe('USDHSwap', () => {
   it('renders the you-pay / you-receive cards and slippage chips when connected', () => {
     setConnected()
     mockGetQuote.mockImplementation(() => new Promise(() => {}))
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     expect(screen.getByText('You pay')).toBeInTheDocument()
     expect(screen.getByText('You receive')).toBeInTheDocument()
@@ -137,7 +150,7 @@ describe('USDHSwap', () => {
   it('mirrors the input amount as the receive estimate before the quote arrives', () => {
     setConnected()
     mockGetQuote.mockImplementation(() => new Promise(() => {}))
-    render(<USDHSwap defaultAmount="100" />)
+    render(<USDHSwap network="mainnet" defaultAmount="100" />)
 
     // both cards show 100 (You pay input value, You receive optimistic 1:1 mirror)
     expect(screen.getByDisplayValue('100')).toBeInTheDocument()
@@ -149,7 +162,7 @@ describe('USDHSwap', () => {
   it('switches the active slippage preset on click', () => {
     setConnected()
     mockGetQuote.mockImplementation(() => new Promise(() => {}))
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     fireEvent.click(screen.getByRole('button', { name: '1.00%' }))
 
@@ -166,7 +179,7 @@ describe('USDHSwap', () => {
       validUntil: Date.now() + 30_000,
     })
 
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     await waitFor(
       () => {
@@ -182,11 +195,37 @@ describe('USDHSwap', () => {
     expect(screen.queryByText(/Off parity/i)).not.toBeInTheDocument()
   })
 
+  it('clears the previous quote as soon as the amount changes', async () => {
+    setConnected()
+    mockGetQuote
+      .mockResolvedValueOnce({
+        pair: 'USDH/USDC',
+        midPrice: 1_000_000_000_000_000_000n,
+        estimatedReceived: 999_800n,
+        validUntil: Date.now() + 30_000,
+      })
+      .mockImplementationOnce(() => new Promise(() => {}))
+
+    render(<USDHSwap network="mainnet" defaultAmount="1" />)
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('0.9998')).toBeInTheDocument()
+      },
+      { timeout: 2_000 },
+    )
+
+    fireEvent.change(screen.getByLabelText('Amount in USDC'), { target: { value: '2' } })
+
+    expect(screen.queryByText('0.9998')).not.toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+  })
+
   it('surfaces a friendly error when the auto-quote rejects', async () => {
     setConnected()
     mockGetQuote.mockRejectedValue(new Error('upstream down'))
 
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     await waitFor(
       () => {
@@ -204,10 +243,26 @@ describe('USDHSwap', () => {
       refetch: vi.fn(),
     })
     mockGetQuote.mockImplementation(() => new Promise(() => {}))
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     expect(screen.getByText(/Exceeds your HyperEVM USDC balance/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Insufficient HyperEVM USDC' })).toBeDisabled()
+  })
+
+  it('keeps the swap button disabled until route balances are loaded', () => {
+    setConnected()
+    mockUseReadContract.mockReturnValue({ data: undefined, isLoading: true, refetch: vi.fn() })
+    mockHcQueryData.mockReturnValue(undefined)
+    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+
+    render(<USDHSwap network="mainnet" />)
+
+    const button = screen.getByRole('button', { name: 'Bridge and swap' })
+    expect(button).toBeDisabled()
+
+    fireEvent.click(button)
+    expect(mockBridgeToCore).not.toHaveBeenCalled()
+    expect(mockSwap).not.toHaveBeenCalled()
   })
 
   it('shows the inline system-address note up front and runs bridge+swap directly on click', async () => {
@@ -222,7 +277,7 @@ describe('USDHSwap', () => {
     mockSwap.mockResolvedValue({ orderId: 'order-42', received: 1_000_000n })
     const onSwapComplete = vi.fn()
 
-    render(<USDHSwap onSwapComplete={onSwapComplete} />)
+    render(<USDHSwap network="mainnet" onSwapComplete={onSwapComplete} />)
 
     // Inline note shows the system address up front, no intermediate confirm
     // card; clicking the action button fires the bridge tx directly.
@@ -253,7 +308,7 @@ describe('USDHSwap', () => {
     })
     mockSwap.mockResolvedValue({ orderId: 'order-7', received: 1_000_000n })
 
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     await waitFor(
       () => {
@@ -278,7 +333,7 @@ describe('USDHSwap', () => {
     mockHcQueryData.mockReturnValue(500_000_000n)
     mockGetQuote.mockImplementation(() => new Promise(() => {}))
 
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     // Auto-default is HC since it covers — primary button should read "Swap"
     // and the source pill should advertise HyperCore.
@@ -303,7 +358,7 @@ describe('USDHSwap', () => {
     mockHcQueryData.mockReturnValue(100_000_000n)
     mockGetQuote.mockImplementation(() => new Promise(() => {}))
 
-    render(<USDHSwap />)
+    render(<USDHSwap network="mainnet" />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Bridge and swap' })).toBeInTheDocument()
@@ -327,7 +382,7 @@ describe('USDHSwap', () => {
         validUntil: Date.now() + 30_000,
       })
 
-    render(<USDHSwap defaultAmount="1" />)
+    render(<USDHSwap network="mainnet" defaultAmount="1" />)
     await waitFor(
       () => {
         expect(mockGetQuote).toHaveBeenCalledTimes(1)
@@ -364,10 +419,12 @@ describe('USDHSwap', () => {
     mockUseWalletClient.mockReturnValue({ data: undefined })
     mockUseChainId.mockReturnValue(0)
 
-    const { rerender } = render(<USDHSwap />)
+    const { rerender } = render(<USDHSwap network="mainnet" />)
     expect(screen.getByText(/Powered by/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Sentral')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('LiquidTerminal')).not.toBeInTheDocument()
 
-    rerender(<USDHSwap hideAttribution />)
+    rerender(<USDHSwap network="mainnet" hideAttribution />)
     expect(screen.queryByText(/Powered by/)).not.toBeInTheDocument()
   })
 })
