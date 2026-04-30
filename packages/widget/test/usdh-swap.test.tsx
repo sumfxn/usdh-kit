@@ -556,10 +556,12 @@ describe('USDHSwap', () => {
 
     const { rerender } = render(<USDHSwap network="mainnet" />)
     expect(screen.getByText(/Powered by/)).toBeInTheDocument()
-    expect(screen.queryByLabelText('Sentral')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('LiquidTerminal')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Sentral on X')).toBeInTheDocument()
+    expect(screen.getByLabelText('LiquidTerminal on X')).toBeInTheDocument()
 
     rerender(<USDHSwap network="mainnet" hideAttribution />)
     expect(screen.queryByText(/Powered by/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Sentral on X')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('LiquidTerminal on X')).not.toBeInTheDocument()
   })
 })

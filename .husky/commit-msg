@@ -3,9 +3,15 @@ set -eu
 
 COMMIT_MSG_FILE="$1"
 
+# Strip IDE-injected "Made-with:" trailers before validation (Cursor adds these).
+_tmp="$(mktemp "${TMPDIR:-/tmp}/husky-msg.XXXXXX")"
+grep -Ev '^Made-with:' "$COMMIT_MSG_FILE" > "$_tmp" || true
+cat "$_tmp" >"$COMMIT_MSG_FILE"
+rm -f "$_tmp"
+
 if grep -iqE '^Co-Authored-By:.*(noreply@anthropic\.com|noreply@openai\.com|claude|copilot|gpt[ -]?[0-9]?|cursor\.sh|aider|cline|devin|codeium)' "$COMMIT_MSG_FILE"; then
-  printf 'commit-msg: AI co-author footer detected. Remove it and try again.\n' >&2
-  exit 1
+	printf 'commit-msg: AI co-author footer detected. Remove it and try again.\n' >&2
+	exit 1
 fi
 
 npx --no -- commitlint --edit "$COMMIT_MSG_FILE"

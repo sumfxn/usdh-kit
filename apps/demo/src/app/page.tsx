@@ -17,7 +17,25 @@ export default function Home() {
         <SwapSection />
       </div>
       <footer className="mt-10 flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-600">
-        <span>Open source, MIT.</span>
+        <span className="flex items-center gap-3">
+          <a
+            href="https://x.com/Yaugourt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition hover:text-neutral-700 dark:hover:text-neutral-400"
+          >
+            @Yaugourt
+          </a>
+          <span>·</span>
+          <a
+            href="https://x.com/sumfxn"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition hover:text-neutral-700 dark:hover:text-neutral-400"
+          >
+            @sumfxn
+          </a>
+        </span>
         <a
           href="https://github.com/sumfxn/usdh-kit"
           target="_blank"
