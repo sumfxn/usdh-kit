@@ -32,17 +32,24 @@ pnpm add @usdh-kit/sdk
 ## Quickstart
 
 ```ts
-import { createUsdhKit } from '@usdh-kit/sdk'
+import { BridgeAndSwapError, createUsdhKit } from '@usdh-kit/sdk'
 
-const kit = createUsdhKit({ network: 'mainnet', signer, slippageBps: 30 })
+const kit = createUsdhKit({ network: 'mainnet', signer, evmWallet, slippageBps: 30 })
 
-const result = await kit.bridgeAndSwap({
-  from: 'USDC',
-  amount: 1_000_000n,
-  onProgress: (event) => console.log(event.phase),
-})
+try {
+  const result = await kit.bridgeAndSwap({
+    from: 'USDC',
+    amount: 1_000_000n,
+    onProgress: (event) => console.log(event.phase),
+  })
 
-console.log(`got ${result.swap.received} USDH for ${result.swap.spent} USDC`)
+  console.log(`got ${result.swap.received} USDH for ${result.swap.spent} USDC`)
+} catch (err) {
+  if (err instanceof BridgeAndSwapError) {
+    console.error(`${err.phase} failed`, err.cause)
+  }
+  throw err
+}
 ```
 
 `swap()` submits an IOC limit order priced `slippageBps` above the mid (max
@@ -93,15 +100,24 @@ the wallet/RPC will still reject an underfunded bridge transaction.
 2. bridge from HyperEVM when required
 3. swap on HyperCore
 
-It returns both legs when a bridge happened:
+It returns both legs when a bridge happened and emits progress events that can directly drive UI state:
 
 ```ts
-const result = await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+const result = await kit.bridgeAndSwap({
+  from: 'USDC',
+  amount: 1_000_000n,
+  onProgress: (event) => {
+    if (event.phase === 'bridging') showBridgeSpinner()
+    if (event.phase === 'swapping') showSwapSpinner()
+  },
+})
 
 console.log(result.route.sourceChain)
 console.log(result.bridge?.txHash)
 console.log(result.swap.orderId)
 ```
+
+Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. The wrapper exposes `phase`, `route`, optional `bridge`, and `cause` so apps can show accurate recovery copy without parsing strings. Preflight blockers still throw their specific errors (`MissingEvmWalletError`, `InsufficientBalanceError`).
 
 ## Features (V1)
 
@@ -111,7 +127,7 @@ console.log(result.swap.orderId)
 * `bridgeAndSwap()` high-level orchestration with progress callbacks
 * Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 * Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book)
-* Typed error hierarchy rooted at `UsdhKitError` for clean `instanceof` handling
+* Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context
 * npm provenance on every release
 * Mainnet and testnet support, no signing on read paths
 

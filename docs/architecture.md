@@ -106,13 +106,17 @@ BridgeAndSwapInput
       └── forced HC shortfall → InsufficientBalanceError
   ↓ if requiresBridge:
       bridgeToCore({ asset: from, amount })
+      └── unexpected failure → BridgeAndSwapError { phase: 'bridging', route, cause }
   ↓ swap({ from, amount, slippageBps })
+      └── unexpected failure → BridgeAndSwapError { phase: 'swapping', route, bridge?, cause }
   ↓ return BridgeAndSwapResult { route, bridge?, swap }
 ```
 
 The helper emits optional progress events: `route`, `bridging`, `swapping`,
 `done`. It intentionally re-quotes inside `swap()` after a bridge completes so
-the order limit is based on fresh book state.
+the order limit is based on fresh book state. `BridgeAndSwapError` is reserved
+for lifecycle failures where phase context matters; route blockers still throw
+`MissingEvmWalletError` or `InsufficientBalanceError` directly.
 
 ## Errors
 
@@ -121,6 +125,7 @@ All SDK errors extend `UsdhKitError`. Subclasses give consumers `instanceof` gra
 - `MissingEvmWalletError` — `bridgeToCore` called without `evmWallet`
 - `InsufficientBalanceError` — pre-flight balance check failed
 - `BridgeTimeoutError` — credit never landed within timeout
+- `BridgeAndSwapError` — wraps unexpected `bridgeAndSwap` route, bridge, or swap failures with `phase`, `route`, optional `bridge`, and `cause`
 - `InvalidInputError` — amount, decimal string, or other input is malformed
 - `SigningError` — `signer.signTypedData` rejected or returned invalid sig
 - `NetworkError` — `/info` or `/exchange` fetch failed, or HL returned a protocol-level error

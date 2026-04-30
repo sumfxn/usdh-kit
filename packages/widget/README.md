@@ -28,7 +28,7 @@ import { useUsdhKit } from '@usdh-kit/widget'
 function CustomSwap() {
   const kit = useUsdhKit('mainnet')
   if (!kit) return null
-  // call kit.getQuote, kit.bridgeToCore, kit.swap directly
+  // call kit.preflightSwap or kit.bridgeAndSwap for a custom flow
 }
 ```
 

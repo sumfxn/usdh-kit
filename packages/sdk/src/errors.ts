@@ -1,6 +1,36 @@
+import type { BridgeResult } from './types/bridge.js'
+import type { SwapRoute } from './types/swap.js'
+
 /** Base class for all errors thrown by usdh-kit. */
 export class UsdhKitError extends Error {
   override readonly name: string = 'UsdhKitError'
+}
+
+export type BridgeAndSwapFailurePhase = 'route' | 'bridging' | 'swapping'
+
+/**
+ * Wraps unexpected failures inside the high-level bridgeAndSwap lifecycle while
+ * preserving the phase and route context that callers need for recovery UI.
+ */
+export class BridgeAndSwapError extends UsdhKitError {
+  override readonly name = 'BridgeAndSwapError'
+  override readonly cause: unknown
+
+  constructor(
+    public readonly phase: BridgeAndSwapFailurePhase,
+    cause: unknown,
+    public readonly route: SwapRoute | undefined = undefined,
+    public readonly bridge: BridgeResult | undefined = undefined,
+  ) {
+    super(`bridgeAndSwap failed during ${phase}: ${errorMessage(cause)}`, { cause })
+    this.cause = cause
+  }
+}
+
+function errorMessage(cause: unknown): string {
+  if (cause instanceof Error) return cause.message
+  if (typeof cause === 'string') return cause
+  return 'unknown error'
 }
 
 /** Invalid arguments passed to the SDK. */
