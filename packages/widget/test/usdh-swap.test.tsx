@@ -11,14 +11,16 @@ const mockUseWalletClient =
   vi.fn<() => { data: { sendTransaction: () => Promise<unknown> } | undefined }>()
 const mockUseChainId = vi.fn<() => number>()
 const mockSwitchChain = vi.fn()
+const mockSignTypedDataAsync = vi.fn()
+const mockSignMessageAsync = vi.fn()
 const mockUseReadContract =
   vi.fn<() => { data: unknown; isLoading: boolean; refetch: () => void }>()
 
 vi.mock('wagmi', () => ({
   useAccount: () => mockUseAccount(),
   useWalletClient: () => mockUseWalletClient(),
-  useSignTypedData: () => ({ signTypedDataAsync: vi.fn() }),
-  useSignMessage: () => ({ signMessageAsync: vi.fn() }),
+  useSignTypedData: () => ({ signTypedDataAsync: mockSignTypedDataAsync }),
+  useSignMessage: () => ({ signMessageAsync: mockSignMessageAsync }),
   useChainId: () => mockUseChainId(),
   useSwitchChain: () => ({ switchChain: mockSwitchChain, isPending: false }),
   useReadContract: () => mockUseReadContract(),
@@ -41,13 +43,53 @@ vi.mock('@tanstack/react-query', () => ({
   },
 }))
 
-const mockGetQuote = vi.fn()
+const mockPreflightSwap = vi.fn()
 const mockBridgeToCore = vi.fn()
 const mockSwap = vi.fn()
 
+function makeQuote(estimatedReceived = 1_000_000n) {
+  return {
+    pair: 'USDH/USDC',
+    midPrice: 1_000_000_000_000_000_000n,
+    estimatedReceived,
+    validUntil: Date.now() + 30_000,
+  }
+}
+
+function makeRoute(
+  overrides: Partial<{
+    amount: bigint
+    sourceChain: 'hypercore' | 'hyperevm'
+    requiresBridge: boolean
+    canSwap: boolean
+    estimatedReceived: bigint
+    hypercoreBalance: bigint
+    hypercoreTotal: bigint
+    hypercoreHold: bigint
+    hypercoreDecimals: number
+    requiredHypercoreBalance: bigint
+  }> = {},
+) {
+  const sourceChain = overrides.sourceChain ?? 'hyperevm'
+  const hypercoreBalance = overrides.hypercoreBalance ?? 0n
+  return {
+    from: 'USDC',
+    amount: overrides.amount ?? 1_000_000n,
+    sourceChain,
+    requiresBridge: overrides.requiresBridge ?? sourceChain === 'hyperevm',
+    canSwap: overrides.canSwap ?? true,
+    quote: makeQuote(overrides.estimatedReceived),
+    hypercoreBalance,
+    hypercoreTotal: overrides.hypercoreTotal ?? hypercoreBalance,
+    hypercoreHold: overrides.hypercoreHold ?? 0n,
+    hypercoreDecimals: overrides.hypercoreDecimals ?? 8,
+    requiredHypercoreBalance: overrides.requiredHypercoreBalance ?? 100_400_000n,
+  }
+}
+
 vi.mock('@usdh-kit/sdk', () => ({
   createUsdhKit: () => ({
-    getQuote: mockGetQuote,
+    preflightSwap: mockPreflightSwap,
     bridgeToCore: mockBridgeToCore,
     swap: mockSwap,
   }),
@@ -81,7 +123,7 @@ function setConnected({ chainId = HYPER_EVM_MAINNET_ID }: { chainId?: number } =
 
 describe('USDHSwap', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     mockTokenQueryData.mockReturnValue({
       evmAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
       evmDecimals: 18,
@@ -89,6 +131,7 @@ describe('USDHSwap', () => {
       hcTokenIndex: 0,
     })
     mockHcQueryData.mockReturnValue(undefined)
+    mockPreflightSwap.mockResolvedValue(makeRoute())
     mockUseReadContract.mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn() })
   })
 
@@ -137,7 +180,7 @@ describe('USDHSwap', () => {
 
   it('renders the you-pay / you-receive cards and slippage chips when connected', () => {
     setConnected()
-    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
     render(<USDHSwap network="mainnet" />)
 
     expect(screen.getByText('You pay')).toBeInTheDocument()
@@ -149,7 +192,7 @@ describe('USDHSwap', () => {
 
   it('mirrors the input amount as the receive estimate before the quote arrives', () => {
     setConnected()
-    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
     render(<USDHSwap network="mainnet" defaultAmount="100" />)
 
     // both cards show 100 (You pay input value, You receive optimistic 1:1 mirror)
@@ -161,7 +204,7 @@ describe('USDHSwap', () => {
 
   it('switches the active slippage preset on click', () => {
     setConnected()
-    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
     render(<USDHSwap network="mainnet" />)
 
     fireEvent.click(screen.getByRole('button', { name: '1.00%' }))
@@ -172,18 +215,13 @@ describe('USDHSwap', () => {
 
   it('auto-fetches a quote (debounced) and renders the rounded receive estimate without bps noise', async () => {
     setConnected()
-    mockGetQuote.mockResolvedValue({
-      pair: 'USDH/USDC',
-      midPrice: 1_000_200_000_000_000_000n,
-      estimatedReceived: 999_800n,
-      validUntil: Date.now() + 30_000,
-    })
+    mockPreflightSwap.mockResolvedValue(makeRoute({ estimatedReceived: 999_800n }))
 
     render(<USDHSwap network="mainnet" />)
 
     await waitFor(
       () => {
-        expect(mockGetQuote).toHaveBeenCalled()
+        expect(mockPreflightSwap).toHaveBeenCalled()
       },
       { timeout: 2_000 },
     )
@@ -197,13 +235,8 @@ describe('USDHSwap', () => {
 
   it('clears the previous quote as soon as the amount changes', async () => {
     setConnected()
-    mockGetQuote
-      .mockResolvedValueOnce({
-        pair: 'USDH/USDC',
-        midPrice: 1_000_000_000_000_000_000n,
-        estimatedReceived: 999_800n,
-        validUntil: Date.now() + 30_000,
-      })
+    mockPreflightSwap
+      .mockResolvedValueOnce(makeRoute({ estimatedReceived: 999_800n }))
       .mockImplementationOnce(() => new Promise(() => {}))
 
     render(<USDHSwap network="mainnet" defaultAmount="1" />)
@@ -223,7 +256,7 @@ describe('USDHSwap', () => {
 
   it('surfaces a friendly error when the auto-quote rejects', async () => {
     setConnected()
-    mockGetQuote.mockRejectedValue(new Error('upstream down'))
+    mockPreflightSwap.mockRejectedValue(new Error('upstream down'))
 
     render(<USDHSwap network="mainnet" />)
 
@@ -242,7 +275,7 @@ describe('USDHSwap', () => {
       isLoading: false,
       refetch: vi.fn(),
     })
-    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
     render(<USDHSwap network="mainnet" />)
 
     expect(screen.getByText(/Exceeds your HyperEVM USDC balance/)).toBeInTheDocument()
@@ -253,7 +286,7 @@ describe('USDHSwap', () => {
     setConnected()
     mockUseReadContract.mockReturnValue({ data: undefined, isLoading: true, refetch: vi.fn() })
     mockHcQueryData.mockReturnValue(undefined)
-    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
 
     render(<USDHSwap network="mainnet" />)
 
@@ -267,12 +300,7 @@ describe('USDHSwap', () => {
 
   it('shows the inline system-address note up front and runs bridge+swap directly on click', async () => {
     setConnected()
-    mockGetQuote.mockResolvedValue({
-      pair: 'USDH/USDC',
-      midPrice: 1_000_000_000_000_000_000n,
-      estimatedReceived: 1_000_000n,
-      validUntil: Date.now() + 30_000,
-    })
+    mockPreflightSwap.mockResolvedValue(makeRoute())
     mockBridgeToCore.mockResolvedValue({ txHash: '0xabcdef0123456789abcdef0123456789abcdef01' })
     mockSwap.mockResolvedValue({ orderId: 'order-42', received: 1_000_000n })
     const onSwapComplete = vi.fn()
@@ -300,12 +328,13 @@ describe('USDHSwap', () => {
     // 1.5 USDC on HC at 8 weiDecimals → 150_000_000n. Default amount is 1 USDC,
     // requiring 100_000_000n in HC units, so HC is sufficient and bridge is skipped.
     mockHcQueryData.mockReturnValue(150_000_000n)
-    mockGetQuote.mockResolvedValue({
-      pair: 'USDH/USDC',
-      midPrice: 1_000_000_000_000_000_000n,
-      estimatedReceived: 1_000_000n,
-      validUntil: Date.now() + 30_000,
-    })
+    mockPreflightSwap.mockResolvedValue(
+      makeRoute({
+        sourceChain: 'hypercore',
+        requiresBridge: false,
+        hypercoreBalance: 150_000_000n,
+      }),
+    )
     mockSwap.mockResolvedValue({ orderId: 'order-7', received: 1_000_000n })
 
     render(<USDHSwap network="mainnet" />)
@@ -331,7 +360,13 @@ describe('USDHSwap', () => {
     setConnected()
     // 5 USDC on HC — covers the 1 USDC default even with slippage + fee buffer.
     mockHcQueryData.mockReturnValue(500_000_000n)
-    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+    mockPreflightSwap.mockResolvedValue(
+      makeRoute({
+        sourceChain: 'hypercore',
+        requiresBridge: false,
+        hypercoreBalance: 500_000_000n,
+      }),
+    )
 
     render(<USDHSwap network="mainnet" />)
 
@@ -356,7 +391,7 @@ describe('USDHSwap', () => {
     // Default amount = 1 USDC, default slippage 30 bps + 10 bps fee buffer
     // means we need 1.004 USDC on HC to skip the bridge. 1.0 exactly is short.
     mockHcQueryData.mockReturnValue(100_000_000n)
-    mockGetQuote.mockImplementation(() => new Promise(() => {}))
+    mockPreflightSwap.mockResolvedValue(makeRoute({ hypercoreBalance: 100_000_000n }))
 
     render(<USDHSwap network="mainnet" />)
 
@@ -368,24 +403,19 @@ describe('USDHSwap', () => {
   it('discards stale quote responses when the amount changes mid-flight', async () => {
     setConnected()
     let resolveStale: (q: unknown) => void = () => {}
-    mockGetQuote
+    mockPreflightSwap
       .mockImplementationOnce(
         () =>
           new Promise((r) => {
             resolveStale = r as (q: unknown) => void
           }),
       )
-      .mockResolvedValueOnce({
-        pair: 'USDH/USDC',
-        midPrice: 1_000_000_000_000_000_000n,
-        estimatedReceived: 2_000_000n,
-        validUntil: Date.now() + 30_000,
-      })
+      .mockResolvedValueOnce(makeRoute({ amount: 2_000_000n, estimatedReceived: 2_000_000n }))
 
     render(<USDHSwap network="mainnet" defaultAmount="1" />)
     await waitFor(
       () => {
-        expect(mockGetQuote).toHaveBeenCalledTimes(1)
+        expect(mockPreflightSwap).toHaveBeenCalledTimes(1)
       },
       { timeout: 2_000 },
     )
@@ -394,7 +424,7 @@ describe('USDHSwap', () => {
 
     await waitFor(
       () => {
-        expect(mockGetQuote).toHaveBeenCalledTimes(2)
+        expect(mockPreflightSwap).toHaveBeenCalledTimes(2)
       },
       { timeout: 2_000 },
     )
@@ -404,12 +434,7 @@ describe('USDHSwap', () => {
 
     // Late-arriving response from the stale request must NOT clobber the
     // headline — the request-id guard discards it.
-    resolveStale({
-      pair: 'USDH/USDC',
-      midPrice: 1_000_000_000_000_000_000n,
-      estimatedReceived: 999_000n,
-      validUntil: Date.now() + 30_000,
-    })
+    resolveStale(makeRoute({ estimatedReceived: 999_000n }))
     await new Promise((r) => setTimeout(r, 50))
     expect(screen.queryByText('0.999')).not.toBeInTheDocument()
   })
