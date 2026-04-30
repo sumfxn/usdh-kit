@@ -55,6 +55,14 @@ describe('findUsdhUsdcPair', () => {
     expect(() => findUsdhUsdcPair({ ...meta, universe: [] })).toThrow(NetworkError)
   })
 
+  it('throws when the only pair has the unsupported reverse orientation', () => {
+    const reversed: SpotMeta = {
+      ...meta,
+      universe: [{ name: 'USDC/USDH', tokens: [0, 1], index: 0, isCanonical: true }],
+    }
+    expect(() => findUsdhUsdcPair(reversed)).toThrow(/USDH as base and USDC as quote/)
+  })
+
   it('reads pair.index from spotMeta, not the array position', () => {
     const mainnetLike: SpotMeta = {
       ...meta,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { NetworkError } from '../src/errors.js'
+import { InvalidInputError, NetworkError } from '../src/errors.js'
 import type { L1Signature } from '../src/signing.js'
 import {
   type ExchangeResponse,
@@ -40,6 +40,19 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
 }
 
 describe('createExchangeClient', () => {
+  it('rejects an invalid network synchronously', () => {
+    expect(() =>
+      // biome-ignore lint/suspicious/noExplicitAny: deliberately bad input
+      createExchangeClient({ network: 'devnet' as any }),
+    ).toThrow(InvalidInputError)
+  })
+
+  it('rejects non-positive timeouts synchronously', () => {
+    expect(() => createExchangeClient({ network: 'mainnet', timeoutMs: 0 })).toThrow(
+      InvalidInputError,
+    )
+  })
+
   it('targets the mainnet endpoint', async () => {
     const fetch = vi.fn(async () => jsonResponse(okFilled))
     const client = createExchangeClient({ network: 'mainnet', fetch })

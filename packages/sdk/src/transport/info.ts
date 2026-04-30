@@ -31,6 +31,12 @@ export function createInfoClient(config: InfoClientConfig): InfoClient {
   const fetchImpl = config.fetch ?? globalThis.fetch
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
+  if (url === undefined) {
+    throw new InvalidInputError(`network must be 'mainnet' or 'testnet'`)
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new InvalidInputError('timeoutMs must be a positive number')
+  }
   if (typeof fetchImpl !== 'function') {
     throw new TypeError('fetch is not available; provide config.fetch')
   }

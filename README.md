@@ -96,7 +96,7 @@ export default function Page() {
 }
 ```
 
-The widget defaults to `theme="auto"` (follows the user's system). Force a palette with `<USDHSwap theme="dark" />` or `<USDHSwap theme="light" />`. Override any colour token from your own stylesheet — see [docs/theming.md](./docs/theming.md).
+The widget defaults to `theme="auto"` (follows the user's system). Force a palette with `<USDHSwap network="mainnet" theme="dark" />` or `<USDHSwap network="mainnet" theme="light" />`. Override any colour token from your own stylesheet — see [docs/theming.md](./docs/theming.md).
 
 <!-- Replace these placeholders with screenshots once captured. -->
 <!--

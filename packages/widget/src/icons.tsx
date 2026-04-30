@@ -100,64 +100,6 @@ export function UsdhIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-/** Sentral monogram, official mark. */
-export function SentralMark(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 145 168"
-      width="11"
-      height="13"
-      fill="none"
-      role="img"
-      aria-label="Sentral"
-      {...props}
-    >
-      <path
-        d="M67.9013 65.2157L128.157 81.3306C137.863 83.9261 144.612 92.7056 144.612 102.737V130.431L83.5978 114.114V128.387C83.5978 138.417 76.8491 147.196 67.1426 149.793L0 167.75V123.05L58.5053 107.402L25.6816 98.6228C10.5333 94.5722 0 80.8699 0 65.2157C0 49.5616 10.5333 35.8593 25.6816 31.8086L144.612 0V27.6949C144.612 37.7246 137.863 46.5041 128.157 49.1008L67.9013 65.2157Z"
-        fill="currentColor"
-      />
-    </svg>
-  )
-}
-
-/**
- * LiquidTerminal monogram, official mark. Uses `currentColor` so the icon
- * tints with the surrounding text color (works in both light and dark
- * mode). Brand droplet blue is kept slightly distinct via opacity so the
- * mountain/dash and droplet remain visually separable on either theme.
- * viewBox tightened around the visible content (mountain + droplet + dash)
- * so the rendered icon optical weight matches the Sentral mark next to it.
- */
-export function LiquidTerminalMark(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="130 110 540 580"
-      width="13"
-      height="13"
-      role="img"
-      aria-label="LiquidTerminal"
-      {...props}
-    >
-      <polygon
-        points="462.14 405.28 437.5 405.28 386.14 311.63 310.14 173.05 234.15 311.63 182.79 405.28 158.15 405.28 234.15 266.7 310.14 128.13 386.14 266.7 462.14 405.28"
-        fill="currentColor"
-        stroke="currentColor"
-        strokeWidth="28.92"
-        strokeMiterlimit="10"
-      />
-      <path
-        d="m478.82,491.36c0,89.4-75.3,161.86-168.17,161.86s-168.18-72.46-168.18-161.86h26.62c0,74.76,62.98,135.35,140.65,135.35s140.63-60.59,140.63-135.35h28.44Z"
-        fill="currentColor"
-        stroke="currentColor"
-        strokeWidth="30.43"
-        strokeMiterlimit="10"
-        opacity="0.7"
-      />
-      <rect x="540.53" y="626.67" width="117" height="45.21" fill="currentColor" />
-    </svg>
-  )
-}
-
 export function SwitchHorizontal(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

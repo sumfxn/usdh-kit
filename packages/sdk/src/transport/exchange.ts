@@ -1,4 +1,4 @@
-import { NetworkError } from '../errors.js'
+import { InvalidInputError, NetworkError } from '../errors.js'
 import type { L1Signature } from '../signing.js'
 import type { Address } from '../types/hex.js'
 import type { Network } from '../types/network.js'
@@ -68,6 +68,12 @@ export function createExchangeClient(config: ExchangeClientConfig): ExchangeClie
   const fetchImpl = config.fetch ?? globalThis.fetch
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
+  if (url === undefined) {
+    throw new InvalidInputError(`network must be 'mainnet' or 'testnet'`)
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new InvalidInputError('timeoutMs must be a positive number')
+  }
   if (typeof fetchImpl !== 'function') {
     throw new TypeError('fetch is not available; provide config.fetch')
   }

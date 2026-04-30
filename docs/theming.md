@@ -5,9 +5,9 @@
 ## The `theme` prop
 
 ```tsx
-<USDHSwap theme="auto" />   // default — follows prefers-color-scheme
-<USDHSwap theme="dark" />   // force dark
-<USDHSwap theme="light" />  // force light
+<USDHSwap network="mainnet" theme="auto" />   // default — follows prefers-color-scheme
+<USDHSwap network="mainnet" theme="dark" />   // force dark
+<USDHSwap network="mainnet" theme="light" />  // force light
 ```
 
 `auto` listens to the system preference via `matchMedia('(prefers-color-scheme: dark)')` and re-renders when it changes. SSR renders dark by default to match the most common DeFi expectation; the client effect corrects to light if the system says so. This causes a one-frame flash for light-mode auto users; the standard fix is to read a server-side cookie and pass it as `theme` from the parent (see Next.js example below).
@@ -91,7 +91,7 @@ import { cookies } from 'next/headers'
 const themeCookie = cookies().get('usdh-theme')?.value as 'dark' | 'light' | undefined
 const theme = themeCookie ?? 'auto'
 
-return <USDHSwap theme={theme} />
+return <USDHSwap network="mainnet" theme={theme} />
 ```
 
 Then on the client, write the cookie when the resolved theme is known:
