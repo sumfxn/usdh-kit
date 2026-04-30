@@ -47,6 +47,7 @@ RouteInput
   ↓ resolvePair()
   ↓ info.l2Book(pair.name) → Quote
   ↓ info.spotClearinghouseState(user) → HyperCore source balance
+  ↓ spendable = total - hold (floored at zero)
   ↓ requiredHypercoreBalance = amount + slippage buffer + HC fee buffer
   ↓ choose sourceChain:
       ├── HyperCore covers → sourceChain: 'hypercore'
@@ -55,8 +56,7 @@ RouteInput
 ```
 
 `preflightSwap()` is an alias for `getRoute()` so UI code can use the name that
-best matches its intent. These helpers inspect HyperCore balance only; they do
-not read the user's HyperEVM ERC20 balance.
+best matches its intent. These helpers inspect spendable HyperCore balance only; they do not read the user's HyperEVM ERC20 balance. `getHypercoreBalance()` is exposed separately for apps that want to display `total`, `hold`, and `available` without computing a route.
 
 ## swap (USDC path)
 

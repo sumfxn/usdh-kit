@@ -24,10 +24,13 @@ import { silentLogger } from './types/logger.js'
 import type {
   BridgeAndSwapInput,
   BridgeAndSwapResult,
+  HypercoreBalance,
+  HypercoreBalanceInput,
   Quote,
   QuoteInput,
   RouteInput,
   SourceChain,
+  SourceStable,
   SwapInput,
   SwapResult,
   SwapRoute,
@@ -45,6 +48,8 @@ export interface UsdhKit {
   readonly network: KitConfig['network']
   swap(input: SwapInput): Promise<SwapResult>
   getQuote(input: QuoteInput): Promise<Quote>
+  /** Return the user's HyperCore source-token balance net of held open-order funds. */
+  getHypercoreBalance(input: HypercoreBalanceInput): Promise<HypercoreBalance>
   /**
    * Resolve the recommended source chain for a swap. `auto` prefers a direct
    * HyperCore swap when the user has enough source balance there, otherwise
@@ -150,6 +155,22 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     network: config.network,
     swap,
 
+    async getHypercoreBalance(input: HypercoreBalanceInput): Promise<HypercoreBalance> {
+      assertSourceStable(input.asset)
+      const meta = await info.spotMeta()
+      const token = meta.tokens.find((t) => t.name === input.asset)
+      if (!token) {
+        throw new NetworkError(`${input.asset} token not found in spotMeta`)
+      }
+      return readHypercoreBalance(
+        info,
+        config.signer.address,
+        input.asset,
+        token.index,
+        token.weiDecimals,
+      )
+    },
+
     async getRoute(input: RouteInput): Promise<SwapRoute> {
       return getRoute(input)
     },
@@ -240,7 +261,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
   }
 
   async function getRoute(input: RouteInput): Promise<SwapRoute> {
-    validateSwapInput(input)
+    validateRouteInput(input)
     if (input.from === 'USDT') {
       throw new NotImplementedError('USDT routing lands in a follow-up PR')
     }
@@ -256,7 +277,14 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       validUntil: Date.now() + QUOTE_TTL_MS,
     }
 
-    const hypercoreBalance = await readHypercoreSourceBalance(info, config.signer.address, pair)
+    const hypercore = await readHypercoreBalance(
+      info,
+      config.signer.address,
+      input.from,
+      pair.tokens[1],
+      pair.quoteWeiDecimals,
+    )
+    const hypercoreBalance = hypercore.available
     const requiredSourceAmount =
       input.amount + (input.amount * (BigInt(slippageBps) + HC_FEE_BUFFER_BPS)) / BPS_DENOMINATOR
     const requiredHypercoreBalance = scaleAmount(
@@ -283,6 +311,8 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
           : { blockReason: 'insufficient_hypercore_balance' as const })),
       quote,
       hypercoreBalance,
+      hypercoreTotal: hypercore.total,
+      hypercoreHold: hypercore.hold,
       hypercoreDecimals: pair.quoteWeiDecimals,
       requiredHypercoreBalance,
     }
@@ -335,16 +365,19 @@ function finalizeFill(status: OrderStatus, midPrice: bigint, logger: Logger): Sw
   }
 }
 
-async function readHypercoreSourceBalance(
+async function readHypercoreBalance(
   info: InfoClient,
   user: KitConfig['signer']['address'],
-  pair: ResolvedPair,
-): Promise<bigint> {
+  asset: SourceStable,
+  tokenIndex: number,
+  decimals: number,
+): Promise<HypercoreBalance> {
   const state = await info.spotClearinghouseState(user)
-  const quoteTokenIndex = pair.tokens[1]
-  const row = state.balances.find((b) => b.token === quoteTokenIndex)
-  if (!row) return 0n
-  return parseDecimal(row.total, pair.quoteWeiDecimals)
+  const row = state.balances.find((b) => b.token === tokenIndex)
+  const total = row ? parseDecimal(row.total, decimals) : 0n
+  const hold = row ? parseDecimal(row.hold, decimals) : 0n
+  const available = total > hold ? total - hold : 0n
+  return { asset, tokenIndex, decimals, total, hold, available }
 }
 
 function scaleAmount(amount: bigint, fromDecimals: number, toDecimals: number): bigint {
@@ -373,16 +406,32 @@ function validateSwapInput(input: SwapInput): void {
   }
 }
 
+function validateRouteInput(input: RouteInput): void {
+  validateSwapInput(input)
+  if (
+    input.sourceChain !== undefined &&
+    input.sourceChain !== 'auto' &&
+    input.sourceChain !== 'hypercore' &&
+    input.sourceChain !== 'hyperevm'
+  ) {
+    throw new InvalidInputError(`sourceChain must be 'auto', 'hypercore', or 'hyperevm'`)
+  }
+}
+
 function validateQuoteInput(input: QuoteInput): void {
   assertFromAndAmount(input.from, input.amount)
 }
 
 function assertFromAndAmount(from: unknown, amount: unknown): void {
-  if (from !== 'USDC' && from !== 'USDT') {
-    throw new InvalidInputError(`from must be 'USDC' or 'USDT'`)
-  }
+  assertSourceStable(from)
   if (typeof amount !== 'bigint' || amount <= 0n) {
     throw new InvalidInputError('amount must be a positive bigint')
+  }
+}
+
+function assertSourceStable(from: unknown): asserts from is SourceStable {
+  if (from !== 'USDC' && from !== 'USDT') {
+    throw new InvalidInputError(`from must be 'USDC' or 'USDT'`)
   }
 }
 

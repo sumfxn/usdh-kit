@@ -16,6 +16,7 @@ What works today:
 
 * `getQuote()` and `swap()` for `USDC → USDH` end to end (signing + msgpack + IOC limit submission)
 * `bridgeToCore()` for moving USDC from HyperEVM to HyperCore, with credit polling
+* `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 * `getRoute()` / `preflightSwap()` for HyperCore-vs-HyperEVM source selection
 * `bridgeAndSwap()` for route → optional bridge → swap orchestration
 * Read-only `InfoClient` (spotMeta, spotClearinghouseState, L2 book)
@@ -63,12 +64,12 @@ if (Date.now() < quote.validUntil) {
 
 ## Route and preflight
 
-`getRoute()` decides whether the user can swap directly from HyperCore or needs
-to bridge from HyperEVM first. It checks HyperCore source balance, applies the
-configured slippage plus a small HC fee buffer, and returns a quote alongside
-the route decision.
+`getHypercoreBalance()` returns total, held, and spendable HyperCore balance for a source stable. `getRoute()` decides whether the user can swap directly from HyperCore or needs to bridge from HyperEVM first. It checks spendable HyperCore source balance (`total - hold`), applies the configured slippage plus a small HC fee buffer, and returns a quote alongside the route decision.
 
 ```ts
+const balance = await kit.getHypercoreBalance({ asset: 'USDC' })
+console.log(`spendable HC USDC: ${balance.available}`)
+
 const route = await kit.preflightSwap({ from: 'USDC', amount: 1_000_000n })
 
 if (!route.canSwap) {

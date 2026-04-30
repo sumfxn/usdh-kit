@@ -26,6 +26,22 @@ export interface RouteInput extends SwapInput {
 
 export type RouteBlockReason = 'insufficient_hypercore_balance' | 'missing_evm_wallet'
 
+export interface HypercoreBalanceInput {
+  asset: SourceStable
+}
+
+export interface HypercoreBalance {
+  asset: SourceStable
+  tokenIndex: number
+  decimals: number
+  /** Total HyperCore balance in native token units. */
+  total: bigint
+  /** Balance held in open orders in native token units. */
+  hold: bigint
+  /** Spendable HyperCore balance (`total - hold`, floored at zero). */
+  available: bigint
+}
+
 export interface SwapRoute {
   from: SourceStable
   amount: bigint
@@ -34,8 +50,12 @@ export interface SwapRoute {
   canSwap: boolean
   blockReason?: RouteBlockReason
   quote: Quote
-  /** HyperCore source-token balance in HyperCore native units. */
+  /** Spendable HyperCore source-token balance in HyperCore native units. */
   hypercoreBalance: bigint
+  /** Total HyperCore source-token balance in HyperCore native units. */
+  hypercoreTotal: bigint
+  /** HyperCore source-token balance held in open orders. */
+  hypercoreHold: bigint
   /** HyperCore source-token decimals. */
   hypercoreDecimals: number
   /** Required HyperCore source-token balance for a direct swap, including buffers. */
