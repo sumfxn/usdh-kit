@@ -15,4 +15,4 @@
 - Updated dependencies [5c695c8]
 - Updated dependencies [c614acf]
   - @usdh-kit/sdk@0.2.0
-  - @usdh-kit/widget@1.0.0
+  - @usdh-kit/widget@0.1.0
