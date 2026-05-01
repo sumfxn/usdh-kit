@@ -1,23 +1,9 @@
-# @usdh-kit/sdk
+# @usdh-kit/widget
 
-## 0.2.0
+## 0.1.0
 
 ### Minor Changes
 
-- 35ee28e: feat(sdk): bridgeToCore for HyperEVM stables to HyperCore
-
-  Adds `kit.bridgeToCore({ asset, amount })` that sends an ERC20 transfer of the
-  asset on HyperEVM to its HyperCore system address (`0x20…<tokenIndex BE>`),
-  then polls `spotClearinghouseState` until the deposit is reflected. Default
-  credit timeout is 30s, overridable via `waitForCreditTimeoutMs`.
-
-  New `KitConfig.evmWallet` (`EvmWallet` interface, minimal `sendTransaction`)
-  is required for this method only — `swap` and `getQuote` are unaffected.
-
-  Errors: `MissingEvmWalletError`, `BridgeTimeoutError`.
-
-- ead6d35: Add `isBridgeAndSwapError()` to narrow `BridgeAndSwapError` instances and structural copies safely. The widget now uses the guard before unwrapping lifecycle causes, and the docs cover bridge timeout recovery through `BridgeAndSwapError.cause`.
-- 7d1fc55: Add `BridgeAndSwapError` for high-level swap orchestration failures. The error preserves the failing `phase`, underlying `cause`, route context, and optional bridge result so apps can render recovery UI without parsing message strings. The widget now unwraps this error for friendly copy, and the docs clarify `preflightSwap`, `bridgeAndSwap`, progress events, and lifecycle error handling.
 - 0bd4c4b: fix(sdk): retire SlippageExceededError, memoize useUsdhKit, drop dead code
 
   Three pre-1.0 fixes surfaced by an internal audit:
@@ -51,6 +37,91 @@
      the canonical universe index from spotMeta (mainnet has USDH/USDC at
      index 230, not array position 0).
 
+- 8180915: feat(widget): require network prop, ship CSS bundle and tailwind content paths, add smoke tests
+
+  Three changes that should land before the first public npm tag:
+
+  1. `network` is now required on `<USDHSwap />` and `useUsdhKit`. The
+     previous default of `'mainnet'` silently routed swaps to production
+     if the integrator forgot to pass the prop. Required props move that
+     decision into the type system. **Breaking** for anyone relying on
+     the implicit default.
+
+  2. The widget renders Tailwind utility classes inline. Without action,
+     host apps end up with broken styling: any class unique to the widget
+     (the white "Bridge and swap" button, the red error card, the green
+     success card, the spinner) is missing from the host's compiled CSS
+     because Tailwind only scans the host's own source files. Two new
+     entry points fix this:
+
+     - `@usdh-kit/widget/tailwind-content` — array of content globs for
+       Tailwind v3 hosts. Spread into your `tailwind.config` so the
+       widget's classes are emitted alongside yours. (Tailwind v3 does
+       not deep-merge preset `content` arrays, so a preset wouldn't work
+       here.)
+     - `@usdh-kit/widget/styles.css` — pre-compiled, minified utility
+       stylesheet (about 3 KB) for non-Tailwind hosts. Import once at
+       your app entry.
+
+     `apps/demo` consumes `tailwind-content` for dogfood. Build pipeline
+     adds a `build:css` step using the Tailwind CLI; preflight is
+     disabled so the bundle never resets host styles.
+
+  3. Smoke tests for `<USDHSwap />` covering the disconnected, idle,
+     quote-success, quote-error, and bridge+swap-success paths. wagmi
+     and the SDK are mocked at the module level so tests are fast and
+     deterministic. Closes a gap between the heavily-tested SDK and the
+     previously-untested UI surface.
+
+- 9de157c: feat(widget): port USDHSwap from apps/demo
+
+  Replaces the placeholder with the working `USDHSwap` component that
+  quotes, bridges, and swaps USDC into USDH end-to-end. Also exports the
+  `useUsdhKit` hook for custom UI compositions and the `HyperNetwork`
+  type. Tailwind classes are inline; a standalone CSS bundle lands in a
+  follow-up.
+
+  `apps/demo` now consumes `@usdh-kit/widget` instead of duplicating the
+  component locally.
+
+- 2eab63f: feat(widget): scaffold package with placeholder component
+
+  New `@usdh-kit/widget` package. Ships an `USDHSwap` placeholder plus the
+  build pipeline (tsup ESM+CJS, dts) and peer deps on React 18+, wagmi v2,
+  viem v2, `@tanstack/react-query` v5, and `@usdh-kit/sdk`. The component
+  renders a placeholder; the real swap UI is extracted from `apps/demo` in
+  a follow-up.
+
+- 5c695c8: feat(widget): light, dark and auto theming with WCAG-AA defaults
+
+  The widget palette is now driven by CSS variables defined in the shipped
+  stylesheet. `USDHSwap` accepts a new optional `theme` prop:
+
+  - `'auto'` (default) — follow the user's system preference via
+    `prefers-color-scheme`. The widget re-renders when the OS theme
+    changes.
+  - `'dark'` — force the dark palette.
+  - `'light'` — force the light palette.
+
+  Defaults are tuned for WCAG AA contrast on every body text against the
+  surface it sits on, in both modes. Integrators can override any token
+  in their own stylesheet (loaded after the widget's stylesheet) to
+  customise the palette without forking the widget, e.g.
+
+  ```css
+  .usdh-widget.dark {
+    --usdh-bg: 8 4 16;
+  }
+  ```
+
+  Tokens follow the `rgb(<r> <g> <b>)` triple format so Tailwind's
+  `<alpha-value>` substitution works as expected with classes such as
+  `bg-usdh-surface/40`.
+
+  The `useEffectiveTheme(theme)` hook is also exported for consumers
+  building their own UI on top of the SDK who want the same
+  auto-detection behaviour.
+
 - c614acf: feat(widget): UX overhaul and friendly error mapping
 
   Replaces the placeholder swap form with a connected-state UX that integrators can ship without a custom UI layer. Bundles the friendly-error helper.
@@ -77,16 +148,14 @@
 
   Tests added for the friendly-error mappings and connected-state UI (chain mismatch banner, slippage chip toggling, insufficient-balance state, HC-only swap path, debounce cancellation, expiry-driven quote clear).
 
-## 0.1.0
+### Patch Changes
 
-### Minor Changes
-
-- 15f3b80: Internal Hyperliquid `/exchange` transport. `createExchangeClient` posts a signed L1 action with nonce and optional `vaultAddress` to the exchange endpoint, validates the top-level `{ status, response }` envelope, and returns the parsed response. `OrderResponse` and `isOrderResponse` runtime guard typed for the `order` action. `NetworkError` wraps HTTP, transport, JSON, and timeout failures.
-- 7942cbc: Implement `getQuote()` for `USDC -> USDH`. Resolves the spot pair from `spotMeta` (cached for the lifetime of the kit), reads the L2 book, and computes a mid-price quote with a 30-second validity window. `KitConfig` now accepts optional `fetch` and `timeoutMs`. USDT pricing throws `NotImplementedError` until the double-hop lands. `Quote` adds a `pair` field naming the spot pair used.
-- 84fa2af: Internal Hyperliquid `/info` client. Read-only `spotMeta` and `l2Book` queries via native `fetch`, with `NetworkError` wrapping HTTP, transport, and JSON parse failures. Used by upcoming `getQuote()` implementation.
-- f38c6c9: Internal msgpack encoder for Hyperliquid L1 actions. Supports nil, boolean, integer numbers, bigint, string, array, and plain-object map. Maps preserve insertion order, which HL signing requires. Rejects floats, NaN, infinity, out-of-range bigints, and non-plain objects (Date, Map, Set, etc.). Used by the upcoming swap signing layer.
-- 0c1db72: Internal HL signing layer: `signL1Action({ signer, action, nonce, network, vaultAddress? })` produces an EIP-712 signature `{ r, s, v }` for any L1 action. Computes the action hash by msgpack-encoding the action, appending the nonce big-endian and the vault marker, then keccak256, and wraps it in HL's phantom-agent typed data (chainId 1337). Adds `@noble/hashes` as the only runtime dep. Used by upcoming `swap()` execution.
-- 49c5354: Initial SDK skeleton. Public types (Signer, KitConfig, SwapInput, SwapResult, Quote, Logger), typed error hierarchy rooted at `UsdhKitError`, and `createUsdhKit()` factory with input validation. Execution lands in follow-up PRs.
-- b7676de: Implement `swap()` end-to-end for `USDC -> USDH`. Reads the L2 orderbook, computes a slippage-tolerant aggressive limit price (`mid * (1 + slippageBps/10000)`), builds a Market IOC order action, signs via the configured `Signer`, submits to `/exchange`, parses the fill, and returns a `SwapResult` with the realised slippage in bps. The slippage check is now **pre-fill** (HL rejects bad prices itself) and the realised value is reported on the result without throwing. `NetworkError` wraps transport and per-order errors. `NotImplementedError` for USDT until the double-hop lands.
-
-  `SwapResult.txHash` removed (HL L1 actions have no Ethereum tx hash); `orderId` is the canonical identifier. `ResolvedPair` exposes `assetIndex`, `baseSzDecimals`, and `quoteWeiDecimals` so the kit formats price and size strings against the actual pair precision instead of a hardcoded constant. Nonces are emitted monotonically across concurrent calls. `formatDecimal` accepts an optional `maxFracDigits` cap.
+- 84504fc: Restore the Sentral and LiquidTerminal partner marks in the widget watermark with X links, theme-safe colouring, and a dedicated HyperEVM/HyperCore balance row.
+- ead6d35: Add `isBridgeAndSwapError()` to narrow `BridgeAndSwapError` instances and structural copies safely. The widget now uses the guard before unwrapping lifecycle causes, and the docs cover bridge timeout recovery through `BridgeAndSwapError.cause`.
+- 7d1fc55: Add `BridgeAndSwapError` for high-level swap orchestration failures. The error preserves the failing `phase`, underlying `cause`, route context, and optional bridge result so apps can render recovery UI without parsing message strings. The widget now unwraps this error for friendly copy, and the docs clarify `preflightSwap`, `bridgeAndSwap`, progress events, and lifecycle error handling.
+- Updated dependencies [35ee28e]
+- Updated dependencies [ead6d35]
+- Updated dependencies [7d1fc55]
+- Updated dependencies [0bd4c4b]
+- Updated dependencies [c614acf]
+  - @usdh-kit/sdk@0.2.0
