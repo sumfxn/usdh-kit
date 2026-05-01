@@ -7,6 +7,7 @@ import { useAccount, useChainId, useSwitchChain } from 'wagmi'
 import { HYPER_EVM_CHAIN_ID, networkLabel } from './chains.js'
 import { ActionButton } from './components/action-button.js'
 import { ArrowDivider } from './components/arrow-divider.js'
+import { BalanceRow } from './components/balance-row.js'
 import { ErrorAlert } from './components/error-alert.js'
 import { InlineSystemAddressNote } from './components/inline-system-address-note.js'
 import { NetworkToggle } from './components/network-toggle.js'
@@ -162,7 +163,6 @@ export function USDHSwap(props: USDHSwapProps) {
   const hcBalance = route?.hypercoreBalance ?? balances.hc
   const hcDecimals = route?.hypercoreDecimals ?? balances.hcDecimals
   const routedBalances = { ...balances, hc: hcBalance, hcDecimals }
-  const balancesLoaded = hcBalance !== undefined && balances.evm !== undefined
   const autoSource: SourceChain = route?.sourceChain === 'hypercore' ? 'hc' : 'evm'
   const sourceChain = manualSource ?? autoSource
 
@@ -293,7 +293,7 @@ export function USDHSwap(props: USDHSwapProps) {
   return (
     <div
       data-theme={effectiveTheme}
-      className={`usdh-widget mx-auto w-full max-w-[480px] rounded-2xl border border-usdh-border bg-usdh-bg/70 p-5 shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset] backdrop-blur ${effectiveTheme === 'dark' ? 'dark' : ''}`}
+      className={`usdh-widget mx-auto w-full max-w-[480px] rounded-2xl border border-usdh-border bg-usdh-bg/70 p-4 shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset] backdrop-blur ${effectiveTheme === 'dark' ? 'dark' : ''}`}
     >
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-usdh-text">Swap to USDH</h3>
@@ -315,7 +315,9 @@ export function USDHSwap(props: USDHSwapProps) {
             />
           )}
 
-          <div className="mt-4">
+          <BalanceRow balances={routedBalances} sourceChain={sourceChain} />
+
+          <div className="mt-3">
             <PayCard
               amountStr={amountStr}
               onAmountChange={setAmountStr}
@@ -323,8 +325,6 @@ export function USDHSwap(props: USDHSwapProps) {
               sourceChain={sourceChain}
               onSourceToggle={toggleSourceChain}
               payUsdValue={payUsdValue}
-              balances={routedBalances}
-              balancesLoaded={balancesLoaded}
               hasMaxBalance={hasMaxBalance}
               onMax={setMaxAmount}
             />
@@ -369,7 +369,7 @@ export function USDHSwap(props: USDHSwapProps) {
       )}
 
       {!hideAttribution && (
-        <div className="mt-4 border-t border-usdh-border pt-3">
+        <div className="mt-3 border-t border-usdh-border pt-2.5">
           <Watermark />
         </div>
       )}

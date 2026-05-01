@@ -221,6 +221,8 @@ describe('USDHSwap', () => {
 
     expect(screen.getByText('You pay')).toBeInTheDocument()
     expect(screen.getByText('You receive')).toBeInTheDocument()
+    expect(screen.getByText('HyperEVM balance')).toBeInTheDocument()
+    expect(screen.getByText('HyperCore balance')).toBeInTheDocument()
     expect(screen.getByText('Slippage')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '0.30%' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Bridge and swap' })).toBeInTheDocument()
@@ -556,10 +558,12 @@ describe('USDHSwap', () => {
 
     const { rerender } = render(<USDHSwap network="mainnet" />)
     expect(screen.getByText(/Powered by/)).toBeInTheDocument()
-    expect(screen.queryByLabelText('Sentral')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('LiquidTerminal')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Sentral on X')).toBeInTheDocument()
+    expect(screen.getByLabelText('LiquidTerminal on X')).toBeInTheDocument()
 
     rerender(<USDHSwap network="mainnet" hideAttribution />)
     expect(screen.queryByText(/Powered by/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Sentral on X')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('LiquidTerminal on X')).not.toBeInTheDocument()
   })
 })

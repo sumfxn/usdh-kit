@@ -15,8 +15,8 @@ export function SlippageRow(props: {
     props
 
   return (
-    <div className="mt-4">
-      <p className="mb-1.5 text-[10px] uppercase tracking-wider text-usdh-text-soft">Slippage</p>
+    <div className="mt-3">
+      <p className="mb-1 text-[10px] uppercase tracking-wider text-usdh-text-soft">Slippage</p>
       <div className="flex flex-wrap items-center gap-1">
         {SLIPPAGE_PRESETS_BPS.map((bps) => {
           const active = slippageBps === bps && !showCustom
