@@ -35,6 +35,13 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Verify npm publish credentials
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm whoami
+          npm org ls usdh-kit --json
+          npm access list packages @usdh-kit --json
       - uses: changesets/action@e2f8e964d080ae97c874b19e27b12e0a8620fb6c # v1.4.10
         with:
           version: pnpm version-packages
