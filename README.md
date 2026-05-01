@@ -1,11 +1,6 @@
 # usdh-kit
 
 [![CI](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml)
-[![Built for Hyperliquid](https://img.shields.io/badge/built%20for-Hyperliquid-000000?style=flat)](https://hyperliquid.xyz)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-000000?style=flat&logo=typescript&logoColor=white)](./tsconfig.base.json)
-[![Node](https://img.shields.io/badge/node-%3E%3D18.18-000000?style=flat&logo=nodedotjs&logoColor=white)](./package.json)
-[![Last commit](https://img.shields.io/github/last-commit/sumfxn/usdh-kit?style=flat&color=000000)](https://github.com/sumfxn/usdh-kit/commits/main)
-[![Issues](https://img.shields.io/github/issues/sumfxn/usdh-kit?style=flat&color=000000)](https://github.com/sumfxn/usdh-kit/issues)
 [![License](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
 
 ![usdh-kit banner](./docs/assets/usdh-banner.svg)
