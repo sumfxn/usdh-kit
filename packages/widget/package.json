@@ -1,6 +1,6 @@
 {
   "name": "@usdh-kit/widget",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Embeddable React widget for swapping stablecoins into USDH on Hyperliquid",
   "license": "MIT",
   "author": "sumfxn",
@@ -13,7 +13,14 @@
   "bugs": {
     "url": "https://github.com/sumfxn/usdh-kit/issues"
   },
-  "keywords": ["hyperliquid", "usdh", "react", "widget", "swap", "defi"],
+  "keywords": [
+    "hyperliquid",
+    "usdh",
+    "react",
+    "widget",
+    "swap",
+    "defi"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -36,8 +43,16 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "tailwind-content.cjs", "tailwind-content.d.cts", "README.md", "LICENSE"],
-  "sideEffects": ["./dist/styles.css"],
+  "files": [
+    "dist",
+    "tailwind-content.cjs",
+    "tailwind-content.d.cts",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
   "engines": {
     "node": ">=18.18.0"
   },
