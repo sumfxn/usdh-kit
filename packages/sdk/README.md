@@ -4,9 +4,13 @@
 [![npm](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-000000.svg)](../../LICENSE)
 
-TypeScript SDK to swap stablecoins into USDH on Hyperliquid.
+**Current SDK version:** `0.1.0`
+
+TypeScript SDK for USDH on Hyperliquid.
 
 USDH is the native stablecoin on Hyperliquid, issued by Bridge and designed by Native Markets, with 50% of reserve revenue routed to the Hyperliquid Assistance Fund. `@usdh-kit/sdk` ships the retail-side plumbing (pair resolution, signing, transport) so apps and bots can convert into USDH without writing the Hyperliquid action layer themselves.
+
+Contributors: [Yaugourt](https://x.com/Yaugourt) · [Sumfxn](https://x.com/sumfxn)
 
 ## Status
 

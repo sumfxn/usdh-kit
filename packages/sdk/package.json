@@ -1,7 +1,7 @@
 {
   "name": "@usdh-kit/sdk",
   "version": "0.1.0",
-  "description": "TypeScript SDK to swap stablecoins into USDH on Hyperliquid",
+  "description": "TypeScript SDK for USDH on Hyperliquid",
   "license": "MIT",
   "author": "sumfxn",
   "homepage": "https://github.com/sumfxn/usdh-kit#readme",

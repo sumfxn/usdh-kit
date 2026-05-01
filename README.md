@@ -8,6 +8,8 @@
 [![Issues](https://img.shields.io/github/issues/sumfxn/usdh-kit?style=flat&color=000000)](https://github.com/sumfxn/usdh-kit/issues)
 [![License](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
 
+![usdh-kit banner](./docs/assets/usdh-banner.svg)
+
 <!--
   npm-dependent badges, intentionally commented until @usdh-kit/sdk and
   @usdh-kit/widget are published. Uncomment as part of the first npm
@@ -20,7 +22,7 @@
 -->
 
 
-TypeScript SDK and React widget to swap stablecoins into USDH on Hyperliquid.
+TypeScript SDK for USDH on Hyperliquid.
 
 USDH is the native stablecoin on Hyperliquid, issued by Bridge and designed by Native Markets, with 50% of reserve revenue routed to the Hyperliquid Assistance Fund. `@usdh-kit/sdk` ships the retail-side plumbing (pair resolution, signing, transport) so apps and bots can convert into USDH without writing the Hyperliquid action layer themselves. `@usdh-kit/widget` is an embeddable React component on top of the SDK so dapps can drop in a swap form in a few lines.
 
@@ -109,12 +111,7 @@ export default function Page() {
 
 The widget defaults to `theme="auto"` (follows the user's system). Force a palette with `<USDHSwap network="mainnet" theme="dark" />` or `<USDHSwap network="mainnet" theme="light" />`. Override any colour token from your own stylesheet — see [docs/theming.md](./docs/theming.md).
 
-<!-- Replace these placeholders with screenshots once captured. -->
-<!--
-| Dark | Light |
-| --- | --- |
-| ![Widget dark](./docs/assets/widget-dark.png) | ![Widget light](./docs/assets/widget-light.png) |
--->
+<img src="./docs/assets/widget-dark.png" alt="USDH swap widget dark mode" width="480" />
 
 ## Use cases
 

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="title desc">
+  <title id="title">usdh-kit banner</title>
+  <desc id="desc">A clean light banner for usdh-kit, a TypeScript SDK for USDH on Hyperliquid.</desc>
+  <defs>
+    <linearGradient id="mint" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#4affc6"/>
+      <stop offset="1" stop-color="#22d99b"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f5fbf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="320" rx="30" fill="url(#panel)"/>
+  <rect x="1" y="1" width="1278" height="318" rx="29" fill="none" stroke="#dce9e2" stroke-width="2"/>
+  <g transform="translate(112 72)">
+    <rect width="176" height="176" rx="44" fill="#062b20"/>
+    <path d="M95 50H81V22h14v28ZM95 126H81v28h14v-28ZM61 121v-14H44v14h17ZM111 56v14H61v19h64v38H61v-14h50V98H47V56h64ZM111 70V56h21v14h-21Z" fill="url(#mint)"/>
+  </g>
+  <text x="348" y="128" fill="#061b16" font-family="Inter, Arial, sans-serif" font-size="66" font-weight="750">usdh-kit</text>
+  <text x="352" y="177" fill="#344b42" font-family="Inter, Arial, sans-serif" font-size="26">TypeScript SDK for USDH on Hyperliquid.</text>
+  <text x="352" y="222" fill="#0d3b2c" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="650">SDK · Widget · Examples · Docs</text>
+</svg>
