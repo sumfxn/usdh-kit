@@ -78,6 +78,19 @@ describe('friendlyError', () => {
 
   it('maps SigningError to an explicit signature-failed prompt', () => {
     expect(friendlyError(new SigningError('typed data sign failed'))).toBe(
+      'Wallet could not sign the Hyperliquid order. Check wallet EIP-712 signing support and retry.',
+    )
+  })
+
+  it('maps SigningError wallet rejection causes to signature rejection copy', () => {
+    const cause = Object.assign(new Error('User rejected'), { code: 4001 })
+    const err = new SigningError('signer.signTypedData rejected', { cause })
+
+    expect(friendlyError(err)).toBe('Signature rejected in wallet.')
+  })
+
+  it('preserves generic SigningError failures without leaking wallet payloads', () => {
+    expect(friendlyError(new SigningError('provider unavailable'))).toBe(
       'Wallet signature failed. Please try again.',
     )
   })

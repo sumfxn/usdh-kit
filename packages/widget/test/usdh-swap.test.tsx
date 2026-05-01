@@ -8,25 +8,33 @@ const STUB_ADDRESS = '0x1234567890abcdef1234567890abcdef12345678' as const
 
 const mockUseAccount = vi.fn<() => { isConnected: boolean; address?: `0x${string}` }>()
 const mockUseWalletClient =
-  vi.fn<() => { data: { sendTransaction: () => Promise<unknown> } | undefined }>()
+  vi.fn<
+    () => {
+      data:
+        | {
+            sendTransaction: () => Promise<unknown>
+            signTypedData: () => Promise<unknown>
+            signMessage: () => Promise<unknown>
+          }
+        | undefined
+    }
+  >()
 const mockUseChainId = vi.fn<() => number>()
 const mockSwitchChain = vi.fn()
-const mockSignTypedDataAsync = vi.fn()
-const mockSignMessageAsync = vi.fn()
 const mockUseReadContract =
-  vi.fn<() => { data: unknown; isLoading: boolean; refetch: () => void }>()
+  vi.fn<() => { data: unknown; isLoading: boolean; isFetching?: boolean; refetch: () => void }>()
 
 vi.mock('wagmi', () => ({
   useAccount: () => mockUseAccount(),
   useWalletClient: () => mockUseWalletClient(),
-  useSignTypedData: () => ({ signTypedDataAsync: mockSignTypedDataAsync }),
-  useSignMessage: () => ({ signMessageAsync: mockSignMessageAsync }),
   useChainId: () => mockUseChainId(),
   useSwitchChain: () => ({ switchChain: mockSwitchChain, isPending: false }),
   useReadContract: () => mockUseReadContract(),
 }))
 
 const mockHcQueryData = vi.fn<() => bigint | undefined>(() => undefined)
+const mockHcRefetch = vi.fn()
+const mockTokenRefetch = vi.fn()
 const mockTokenQueryData = vi.fn<() => unknown>(() => ({
   evmAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
   evmDecimals: 18,
@@ -37,9 +45,14 @@ const mockTokenQueryData = vi.fn<() => unknown>(() => ({
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
     if (queryKey.includes('usdc-token-info')) {
-      return { data: mockTokenQueryData(), isLoading: false, refetch: vi.fn() }
+      return {
+        data: mockTokenQueryData(),
+        isLoading: false,
+        isFetching: false,
+        refetch: mockTokenRefetch,
+      }
     }
-    return { data: mockHcQueryData(), isLoading: false, refetch: vi.fn() }
+    return { data: mockHcQueryData(), isLoading: false, isFetching: false, refetch: mockHcRefetch }
   },
 }))
 
@@ -145,7 +158,11 @@ vi.mock('@usdh-kit/sdk', () => ({
 function setConnected({ chainId = HYPER_EVM_MAINNET_ID }: { chainId?: number } = {}) {
   mockUseAccount.mockReturnValue({ isConnected: true, address: STUB_ADDRESS })
   mockUseWalletClient.mockReturnValue({
-    data: { sendTransaction: () => Promise.resolve('0xtx') },
+    data: {
+      sendTransaction: () => Promise.resolve('0xtx'),
+      signTypedData: () => Promise.resolve('0xsig'),
+      signMessage: () => Promise.resolve('0xsig'),
+    },
   })
   mockUseChainId.mockReturnValue(chainId)
   mockUseReadContract.mockReturnValue({
@@ -159,6 +176,8 @@ function setConnected({ chainId = HYPER_EVM_MAINNET_ID }: { chainId?: number } =
 describe('USDHSwap', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    mockTokenRefetch.mockReset()
+    mockHcRefetch.mockReset()
     mockTokenQueryData.mockReturnValue({
       evmAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
       evmDecimals: 18,
@@ -221,8 +240,9 @@ describe('USDHSwap', () => {
 
     expect(screen.getByText('You pay')).toBeInTheDocument()
     expect(screen.getByText('You receive')).toBeInTheDocument()
-    expect(screen.getByText('HyperEVM balance')).toBeInTheDocument()
-    expect(screen.getByText('HyperCore balance')).toBeInTheDocument()
+    expect(screen.getByText('Balances')).toBeInTheDocument()
+    expect(screen.getByText('HyperEVM')).toBeInTheDocument()
+    expect(screen.getByText('HyperCore')).toBeInTheDocument()
     expect(screen.getByText('Slippage')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '0.30%' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Bridge and swap' })).toBeInTheDocument()
@@ -304,6 +324,86 @@ describe('USDHSwap', () => {
       },
       { timeout: 2_000 },
     )
+  })
+
+  it('renders the balance row from live balance queries rather than route snapshots', async () => {
+    setConnected()
+    mockHcQueryData.mockReturnValue(500_000_000n)
+    mockPreflightSwap.mockResolvedValue(
+      makeRoute({
+        sourceChain: 'hypercore',
+        requiresBridge: false,
+        hypercoreBalance: 100_000_000n,
+      }),
+    )
+
+    render(<USDHSwap network="mainnet" />)
+
+    await waitFor(
+      () => {
+        expect(mockPreflightSwap).toHaveBeenCalled()
+      },
+      { timeout: 2_000 },
+    )
+    expect(screen.getByText('5 USDC')).toBeInTheDocument()
+  })
+
+  it('updates the displayed HyperCore balance when the live query changes', async () => {
+    setConnected()
+    let hcBalance = 0n
+    mockHcQueryData.mockImplementation(() => hcBalance)
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
+
+    const { rerender } = render(<USDHSwap network="mainnet" />)
+    expect(screen.getByText('0 USDC')).toBeInTheDocument()
+
+    hcBalance = 1_900_000_000n
+    rerender(<USDHSwap network="mainnet" />)
+
+    expect(screen.getByText('19 USDC')).toBeInTheDocument()
+  })
+
+  it('reruns preflight when HyperCore balance changes after connect', async () => {
+    setConnected()
+    let hcBalance = 0n
+    mockHcQueryData.mockImplementation(() => hcBalance)
+    mockPreflightSwap.mockResolvedValue(makeRoute())
+
+    const { rerender } = render(<USDHSwap network="mainnet" />)
+
+    await waitFor(
+      () => {
+        expect(mockPreflightSwap).toHaveBeenCalledTimes(1)
+      },
+      { timeout: 2_000 },
+    )
+
+    hcBalance = 200_000_000n
+    rerender(<USDHSwap network="mainnet" />)
+
+    await waitFor(
+      () => {
+        expect(mockPreflightSwap).toHaveBeenCalledTimes(2)
+      },
+      { timeout: 2_000 },
+    )
+  })
+
+  it('refreshes both HyperEVM and HyperCore balance readers from the balance row', () => {
+    const evmRefetch = vi.fn()
+    setConnected()
+    mockUseReadContract.mockReturnValue({
+      data: 1_000_000_000_000_000_000_000n,
+      isLoading: false,
+      refetch: evmRefetch,
+    })
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
+
+    render(<USDHSwap network="mainnet" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh balances' }))
+
+    expect(mockHcRefetch).toHaveBeenCalled()
+    expect(evmRefetch).toHaveBeenCalled()
   })
 
   it('disables the swap button and labels it Insufficient balance when amount > balance', () => {

@@ -5,15 +5,21 @@ import { useUsdhKit } from '../src/use-usdh-kit.js'
 
 const mockUseAccount = vi.fn<() => { address?: `0x${string}` }>()
 const mockUseWalletClient =
-  vi.fn<() => { data: { sendTransaction: () => Promise<unknown> } | undefined }>()
-const signTypedDataAsync = vi.fn()
-const signMessageAsync = vi.fn()
+  vi.fn<
+    () => {
+      data:
+        | {
+            sendTransaction: () => Promise<unknown>
+            signTypedData: (args: unknown) => Promise<unknown>
+            signMessage: (args: unknown) => Promise<unknown>
+          }
+        | undefined
+    }
+  >()
 
 vi.mock('wagmi', () => ({
   useAccount: () => mockUseAccount(),
   useWalletClient: () => mockUseWalletClient(),
-  useSignTypedData: () => ({ signTypedDataAsync }),
-  useSignMessage: () => ({ signMessageAsync }),
 }))
 
 const createKitMock = vi.fn(() => ({ network: 'testnet' }))
@@ -38,7 +44,7 @@ describe('useUsdhKit', () => {
   })
 
   it('reuses the same kit instance across renders when inputs are stable', () => {
-    const walletClient = { sendTransaction: () => Promise.resolve('0xtx' as const) }
+    const walletClient = makeWalletClient()
     mockUseAccount.mockReturnValue({
       address: '0x1234567890abcdef1234567890abcdef12345678',
     })
@@ -56,7 +62,7 @@ describe('useUsdhKit', () => {
   })
 
   it('rebuilds the kit when network changes', () => {
-    const walletClient = { sendTransaction: () => Promise.resolve('0xtx' as const) }
+    const walletClient = makeWalletClient()
     mockUseAccount.mockReturnValue({
       address: '0x1234567890abcdef1234567890abcdef12345678',
     })
@@ -75,4 +81,40 @@ describe('useUsdhKit', () => {
     expect(second).not.toBe(first)
     expect(createKitMock).toHaveBeenCalledTimes(2)
   })
+
+  it('signs typed data through the wallet client directly', async () => {
+    const walletClient = makeWalletClient()
+    mockUseAccount.mockReturnValue({
+      address: '0x1234567890abcdef1234567890abcdef12345678',
+    })
+    mockUseWalletClient.mockReturnValue({ data: walletClient })
+
+    renderHook(() => useUsdhKit('mainnet'))
+
+    const config = createKitMock.mock.calls[0]?.[0] as {
+      signer: { signTypedData: (args: unknown) => Promise<unknown> }
+    }
+    await expect(
+      config.signer.signTypedData({
+        domain: { name: 'Exchange', version: '1', chainId: 1337 },
+        types: {},
+        primaryType: 'Agent',
+        message: {},
+      }),
+    ).resolves.toBe('0xsignedTypedData')
+    expect(walletClient.signTypedData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: '0x1234567890abcdef1234567890abcdef12345678',
+        domain: expect.objectContaining({ name: 'Exchange', chainId: 1337 }),
+      }),
+    )
+  })
 })
+
+function makeWalletClient() {
+  return {
+    sendTransaction: vi.fn(() => Promise.resolve('0xtx' as const)),
+    signTypedData: vi.fn(() => Promise.resolve('0xsignedTypedData' as const)),
+    signMessage: vi.fn(() => Promise.resolve('0xsignedMessage' as const)),
+  }
+}

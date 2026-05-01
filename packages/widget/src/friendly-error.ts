@@ -23,11 +23,20 @@ const HL_PROTOCOL_PREFIX = /^(HL error|exchange error|order error)/i
  * stack traces, and provider-specific noise.
  */
 export function friendlyError(err: unknown): string {
-  if (isUserRejectedError(err)) {
-    return 'Transaction rejected in your wallet.'
-  }
   if (isBridgeAndSwapError(err)) {
     return friendlyError(err.cause)
+  }
+  if (err instanceof SigningError) {
+    if (isUserRejectedError(getErrorCause(err))) {
+      return 'Signature rejected in wallet.'
+    }
+    if (isTypedDataSigningFailure(err)) {
+      return 'Wallet could not sign the Hyperliquid order. Check wallet EIP-712 signing support and retry.'
+    }
+    return 'Wallet signature failed. Please try again.'
+  }
+  if (isUserRejectedError(err)) {
+    return 'Transaction rejected in your wallet.'
   }
   if (err instanceof MissingEvmWalletError) {
     return 'Connect a wallet to continue.'
@@ -43,9 +52,6 @@ export function friendlyError(err: unknown): string {
   }
   if (err instanceof NotImplementedError) {
     return err.message || 'Not implemented yet.'
-  }
-  if (err instanceof SigningError) {
-    return 'Wallet signature failed. Please try again.'
   }
   if (err instanceof NetworkError) {
     // Hyperliquid protocol-level rejections are wrapped as NetworkError but
@@ -64,14 +70,48 @@ export function friendlyError(err: unknown): string {
 }
 
 function isUserRejectedError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false
   let cursor: unknown = err
-  for (let depth = 0; cursor instanceof Error && depth < 4; depth++) {
-    if (VIEM_USER_REJECTED_NAMES.has(cursor.name)) return true
-    if ('code' in cursor && (cursor as { code?: unknown }).code === 4001) return true
-    cursor = (cursor as { cause?: unknown }).cause
+  for (let depth = 0; isObjectLike(cursor) && depth < 4; depth++) {
+    const shape = cursor as { name?: unknown; code?: unknown; cause?: unknown }
+    if (typeof shape.name === 'string' && VIEM_USER_REJECTED_NAMES.has(shape.name)) return true
+    if (shape.code === 4001) return true
+    cursor = shape.cause
   }
   return false
+}
+
+function isTypedDataSigningFailure(err: unknown): boolean {
+  const message = errorChainText(err).toLowerCase()
+  return (
+    message.includes('signtypeddata') ||
+    message.includes('typed data') ||
+    message.includes('eip-712') ||
+    message.includes('eip712') ||
+    message.includes('chainid')
+  )
+}
+
+function errorChainText(err: unknown): string {
+  const parts: string[] = []
+  let cursor: unknown = err
+  for (let depth = 0; isObjectLike(cursor) && depth < 4; depth++) {
+    const shape = cursor as { name?: unknown; message?: unknown; code?: unknown; cause?: unknown }
+    if (typeof shape.name === 'string') parts.push(shape.name)
+    if (typeof shape.code === 'string' || typeof shape.code === 'number')
+      parts.push(String(shape.code))
+    if (typeof shape.message === 'string') parts.push(shape.message)
+    cursor = shape.cause
+  }
+  return parts.join(' ')
+}
+
+function getErrorCause(err: unknown): unknown {
+  if (!isObjectLike(err)) return undefined
+  return (err as { cause?: unknown }).cause
+}
+
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' || typeof value === 'function') && value !== null
 }
 
 function firstLine(message: string): string {

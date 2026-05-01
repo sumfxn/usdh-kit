@@ -1,21 +1,40 @@
 import { formatBalance } from '../format-display.js'
+import { RefreshIcon } from '../icons.js'
 import type { UsdcBalances } from '../use-balances.js'
 import type { SourceChain } from './source-chain-pill.js'
 
-export function BalanceRow(props: { balances: UsdcBalances; sourceChain: SourceChain }) {
-  const { balances, sourceChain } = props
+export function BalanceRow(props: {
+  balances: UsdcBalances
+  sourceChain: SourceChain
+  onRefresh: () => void
+}) {
+  const { balances, sourceChain, onRefresh } = props
   return (
-    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <BalanceCell
-        label="HyperEVM balance"
-        value={formatUsdcBalance(balances.evm, balances.evmDecimals)}
-        active={sourceChain === 'evm'}
-      />
-      <BalanceCell
-        label="HyperCore balance"
-        value={formatUsdcBalance(balances.hc, balances.hcDecimals)}
-        active={sourceChain === 'hc'}
-      />
+    <div className="mt-3">
+      <div className="mb-1.5 flex items-center justify-between px-0.5">
+        <p className="text-[10px] uppercase tracking-wider text-usdh-text-faint">Balances</p>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={balances.isRefreshing}
+          aria-label="Refresh balances"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-usdh-border/70 text-usdh-text-faint transition hover:border-usdh-border-strong hover:text-usdh-text-soft disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshIcon className={balances.isRefreshing ? 'animate-spin' : undefined} />
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <BalanceCell
+          label="HyperEVM"
+          value={formatUsdcBalance(balances.evm, balances.evmDecimals)}
+          active={sourceChain === 'evm'}
+        />
+        <BalanceCell
+          label="HyperCore"
+          value={formatUsdcBalance(balances.hc, balances.hcDecimals)}
+          active={sourceChain === 'hc'}
+        />
+      </div>
     </div>
   )
 }

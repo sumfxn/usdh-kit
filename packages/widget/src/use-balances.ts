@@ -9,7 +9,7 @@ import { useReadContract } from 'wagmi'
 import { HYPER_EVM_CHAIN_ID } from './chains.js'
 import type { HyperNetwork } from './types.js'
 
-const REFRESH_INTERVAL_MS = 12_000
+const REFRESH_INTERVAL_MS = 5_000
 
 export interface UsdcBalances {
   evm: bigint | undefined
@@ -17,6 +17,7 @@ export interface UsdcBalances {
   hc: bigint | undefined
   hcDecimals: number | undefined
   isLoading: boolean
+  isRefreshing: boolean
   refetch: () => void
 }
 
@@ -40,7 +41,7 @@ function resolveUsdc(meta: SpotMeta): UsdcTokenInfo | null {
 
 /**
  * Read the user's USDC balance on both HyperEVM (the bridge source) and
- * HyperCore (where the swap fills). Both refresh on a 12s cadence so the UI
+ * HyperCore (where the swap fills). Both refresh on a 5s cadence so the UI
  * reflects an in-flight bridge without manual reloads.
  */
 export function useUsdcBalances(
@@ -70,6 +71,7 @@ export function useUsdcBalances(
       return total > hold ? total - hold : 0n
     },
     refetchInterval: REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   })
 
   const evmRead = useReadContract({
@@ -81,6 +83,7 @@ export function useUsdcBalances(
     query: {
       enabled: Boolean(address && token),
       refetchInterval: REFRESH_INTERVAL_MS,
+      refetchOnWindowFocus: true,
     },
   })
 
@@ -90,7 +93,9 @@ export function useUsdcBalances(
     hc: hcQuery.data,
     hcDecimals: token?.hcWeiDecimals,
     isLoading: tokenQuery.isLoading || hcQuery.isLoading || evmRead.isLoading,
+    isRefreshing: tokenQuery.isFetching || hcQuery.isFetching || evmRead.isFetching,
     refetch: () => {
+      tokenQuery.refetch()
       hcQuery.refetch()
       evmRead.refetch()
     },

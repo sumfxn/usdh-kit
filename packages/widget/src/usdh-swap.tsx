@@ -30,6 +30,8 @@ import { Watermark } from './watermark.js'
 const USDC_DECIMALS = 6
 const QUOTE_DEBOUNCE_MS = 400
 
+declare const process: { env?: { NODE_ENV?: string } } | undefined
+
 type Phase = 'idle' | 'bridging' | 'swapping' | 'done'
 
 export type USDHSwapProps = {
@@ -109,7 +111,11 @@ export function USDHSwap(props: USDHSwapProps) {
 
   const quoteRequestId = useRef(0)
   const [manualSource, setManualSource] = useState<SourceChain | null>(null)
+  const balanceRefreshKey = `${balances.evm?.toString() ?? 'evm-unloaded'}:${
+    balances.evmDecimals ?? 'evm-decimals-unloaded'
+  }:${balances.hc?.toString() ?? 'hc-unloaded'}:${balances.hcDecimals ?? 'hc-decimals-unloaded'}`
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: live balance changes must invalidate route/preflight because fresh HC deposits can change the selected source chain.
   useEffect(() => {
     const requestId = ++quoteRequestId.current
     setQuote(null)
@@ -144,7 +150,7 @@ export function USDHSwap(props: USDHSwapProps) {
       }
     }, QUOTE_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [kit, parsedAmount, slippageBps, manualSource, onWrongChain])
+  }, [kit, parsedAmount, slippageBps, manualSource, onWrongChain, balanceRefreshKey])
 
   const hcCovers = route?.sourceChain === 'hypercore' && route.canSwap
 
@@ -160,9 +166,6 @@ export function USDHSwap(props: USDHSwapProps) {
   // Hold on the conservative default ("evm", bridge required) until both
   // balances are loaded — otherwise the pill flips out from under the user
   // when the HC query resolves a tick after the EVM query.
-  const hcBalance = route?.hypercoreBalance ?? balances.hc
-  const hcDecimals = route?.hypercoreDecimals ?? balances.hcDecimals
-  const routedBalances = { ...balances, hc: hcBalance, hcDecimals }
   const autoSource: SourceChain = route?.sourceChain === 'hypercore' ? 'hc' : 'evm'
   const sourceChain = manualSource ?? autoSource
 
@@ -235,6 +238,7 @@ export function USDHSwap(props: USDHSwapProps) {
       balances.refetch()
       onSwapComplete?.(payload)
     } catch (err) {
+      logDevError('bridgeAndSwap', err)
       setError(`${failurePrefix}${friendlyError(err)}`)
       setPhase('idle')
     }
@@ -270,8 +274,8 @@ export function USDHSwap(props: USDHSwapProps) {
   const receiveUsdValue = receiveBigint ? formatUsd(receiveBigint, USDC_DECIMALS) : null
 
   // Active source drives the MAX button.
-  const activeBalance = sourceChain === 'evm' ? balances.evm : hcBalance
-  const activeDecimals = sourceChain === 'evm' ? balances.evmDecimals : hcDecimals
+  const activeBalance = sourceChain === 'evm' ? balances.evm : balances.hc
+  const activeDecimals = sourceChain === 'evm' ? balances.evmDecimals : balances.hcDecimals
 
   function setMaxAmount() {
     if (activeBalance === undefined || activeDecimals === undefined) return
@@ -315,7 +319,11 @@ export function USDHSwap(props: USDHSwapProps) {
             />
           )}
 
-          <BalanceRow balances={routedBalances} sourceChain={sourceChain} />
+          <BalanceRow
+            balances={balances}
+            sourceChain={sourceChain}
+            onRefresh={() => balances.refetch()}
+          />
 
           <div className="mt-3">
             <PayCard
@@ -375,4 +383,51 @@ export function USDHSwap(props: USDHSwapProps) {
       )}
     </div>
   )
+}
+
+function logDevError(operation: string, err: unknown) {
+  if (typeof process === 'undefined' || process.env?.NODE_ENV !== 'development') return
+  console.warn(`[usdh-kit] ${operation} failed`, summarizeError(err))
+}
+
+function summarizeError(err: unknown) {
+  return {
+    error: summarizeErrorShape(err),
+    causeChain: summarizeCauseChain(err),
+  }
+}
+
+function summarizeErrorShape(err: unknown) {
+  if (!isObjectLike(err)) return { message: typeof err === 'string' ? firstLine(err) : undefined }
+  const shape = err as { name?: unknown; code?: unknown; message?: unknown; phase?: unknown }
+  return {
+    name: typeof shape.name === 'string' ? shape.name : undefined,
+    code: typeof shape.code === 'string' || typeof shape.code === 'number' ? shape.code : undefined,
+    phase: typeof shape.phase === 'string' ? shape.phase : undefined,
+    message: typeof shape.message === 'string' ? firstLine(shape.message) : undefined,
+  }
+}
+
+function getCause(err: unknown): unknown {
+  if (!isObjectLike(err)) return undefined
+  return (err as { cause?: unknown }).cause
+}
+
+function summarizeCauseChain(err: unknown) {
+  const chain: unknown[] = []
+  let cursor = getCause(err)
+  for (let depth = 0; cursor !== undefined && depth < 5; depth++) {
+    chain.push(summarizeErrorShape(cursor))
+    cursor = getCause(cursor)
+  }
+  return chain
+}
+
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' || typeof value === 'function') && value !== null
+}
+
+function firstLine(message: string): string {
+  const idx = message.indexOf('\n')
+  return idx === -1 ? message : message.slice(0, idx)
 }
