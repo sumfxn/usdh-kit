@@ -1,5 +1,8 @@
 export { createUsdhKit } from './kit.js'
 export type { UsdhKit } from './kit.js'
+export { approveAgent } from './agent.js'
+export type { ApproveAgentArgs, ApproveAgentResult } from './agent.js'
+export { HYPER_EVM_NATIVE_USDC, getHyperEvmNativeUsdcAddress } from './usdc.js'
 
 export { createInfoClient } from './transport/info.js'
 export type { InfoClient, InfoClientConfig, NSigFigs } from './transport/info.js'

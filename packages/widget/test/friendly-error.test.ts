@@ -38,8 +38,8 @@ describe('friendlyError', () => {
   })
 
   it('maps BridgeTimeoutError to a retry prompt that mentions safety', () => {
-    const err = new BridgeTimeoutError('0xabcd', 30_000)
-    expect(friendlyError(err)).toMatch(/Bridge timed out/i)
+    const err = new BridgeTimeoutError('0xabcd', 180_000)
+    expect(friendlyError(err)).toMatch(/still settling/i)
     expect(friendlyError(err)).toMatch(/Funds are safe/i)
   })
 

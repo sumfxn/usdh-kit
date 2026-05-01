@@ -10,6 +10,12 @@ export interface KitConfig {
   /** Wallet abstraction. See `Signer`. */
   signer: Signer
   /**
+   * Real Hyperliquid account address for balances, routing, and bridge
+   * ownership. Defaults to `signer.address`. Set this when `signer` is an
+   * approved API/agent wallet that signs on behalf of the account.
+   */
+  accountAddress?: Address
+  /**
    * Optional HyperEVM wallet for `bridgeToCore`. Only required when bridging
    * stables from HyperEVM to HyperCore; `swap`/`getQuote` do not use it.
    */

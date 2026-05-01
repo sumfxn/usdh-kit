@@ -93,6 +93,15 @@ describe('createExchangeClient', () => {
     expect(body.vaultAddress).toBe(vault)
   })
 
+  it('includes expiresAfter when provided', async () => {
+    const fetch = vi.fn(async () => jsonResponse(okFilled))
+    const client = createExchangeClient({ network: 'mainnet', fetch })
+    await client.submit({ action, signature: sig, nonce: 1n, expiresAfter: 31_000n })
+    const init = fetch.mock.calls[0]?.[1]
+    const body = JSON.parse(init?.body as string) as { expiresAfter?: number }
+    expect(body.expiresAfter).toBe(31_000)
+  })
+
   it('omits vaultAddress when absent', async () => {
     const fetch = vi.fn(async () => jsonResponse(okFilled))
     const client = createExchangeClient({ network: 'mainnet', fetch })

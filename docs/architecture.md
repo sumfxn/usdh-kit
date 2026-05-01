@@ -12,7 +12,9 @@ packages/sdk/src
 ├── bridge.ts         HyperEVM → HyperCore transfer + credit polling
 ├── signing.ts        EIP-712 typed-data signing for HL L1 actions
 ├── msgpack.ts        canonical msgpack encoding (action_hash input)
-├── abi.ts            ERC-20 transfer encoding for the bridge tx
+├── abi.ts            ERC-20 approve/deposit/transfer encoding for bridge txs
+├── agent.ts          approveAgent user-signed action helper
+├── usdc.ts           native HyperEVM USDC addresses
 ├── bytes.ts          hex / bytes utilities
 ├── errors.ts         typed UsdhKitError hierarchy
 ├── transport
@@ -25,7 +27,9 @@ packages/sdk/src
 
 ## Initial setup
 
-`createUsdhKit({ network, signer, evmWallet?, slippageBps?, fetch?, timeoutMs?, logger? })` validates the config synchronously and returns an object exposing `swap`, `getQuote`, `getRoute`, `preflightSwap`, `bridgeAndSwap`, and `bridgeToCore`. Two transport clients are created lazily — one for read (`/info`) and one for write (`/exchange`).
+`createUsdhKit({ network, signer, accountAddress?, evmWallet?, slippageBps?, fetch?, timeoutMs?, logger? })` validates the config synchronously and returns an object exposing `swap`, `getQuote`, `getRoute`, `preflightSwap`, `bridgeAndSwap`, and `bridgeToCore`. Two transport clients are created lazily — one for read (`/info`) and one for write (`/exchange`).
+
+When `signer` is an approved Hyperliquid agent wallet, set `accountAddress` to the user's master wallet. Reads, routing, balances, and bridge ownership use `accountAddress`; L1 order signatures use `signer`.
 
 The USDH/USDC pair is resolved on first call (cached for the kit's lifetime) by reading `spotMeta` and matching the canonical token names. This handles the case where Hyperliquid renumbers pair indices.
 
@@ -67,10 +71,10 @@ SwapInput
   ↓ midPrice18(book)
   ↓ limitPrice18 = mid * (10000 + slippageBps) / 10000
   ↓ build msgpack action: { type: 'order', orders: [{ a, b: true, p, s, r: false, t: { limit: { tif: 'Ioc' } } }], grouping: 'na' }
-  ↓ signL1Action({ signer, action, nonce, network })
+  ↓ signL1Action({ signer, action, nonce, network, expiresAfter })
   │     ├── canonical msgpack encode of action
   │     ├── keccak256 → action_hash
-  │     ├── EIP-712 typed data domain ('HyperliquidSignTransaction')
+  │     ├── EIP-712 typed data domain ('Exchange', chainId 1337)
   │     └── signer.signTypedData(...)
   ↓ exchange.submit({ action, signature, nonce })
   ↓ parse response.statuses[0]
@@ -85,16 +89,18 @@ The IOC limit ensures Hyperliquid's matcher rejects fills at worse than `mid + s
 
 ```
 BridgeInput
-  ↓ resolveAsset() → { evmAddress, decimals, hcTokenIndex, systemAddress }
-  ↓ encode ERC-20 transfer(systemAddress, amount)
-  ↓ evmWallet.sendTransaction({ to: evmAddress, data })  → txHash
+  ↓ resolveAsset() → { evmAddress, decimals, hcTokenIndex, bridge target }
+  ↓ USDC: approve native USDC, then CoreDepositWallet.deposit(amount, spot)
+  ↓ other linked assets: ERC-20 transfer(systemAddress, amount)
   ↓ poll info.spotClearinghouseState(user) until balance increases
-  │     ├── default timeout: 30s
+  │     ├── default timeout: 180s
   │     └── on timeout: throw BridgeTimeoutError
   ↓ return BridgeResult { txHash, creditedAt }
 ```
 
 No explicit HyperCore-side signing — the credit is automatic once the EVM tx confirms and Hyperliquid's relayer indexes it.
+
+For USDC, the wallet can see two HyperEVM transactions: `approve` if allowance is insufficient, then `deposit`. The final `USDC → USDH` trade is a HyperCore order signed separately by the configured `signer` (usually an approved agent in browser apps).
 
 ## bridgeAndSwap
 
@@ -141,6 +147,6 @@ The widget's `friendlyError(err)` helper maps these to short copy-safe strings (
 
 ## Bridge polling internals
 
-`bridgeToCore` polls every ~2s up to the timeout. The detector reads `spotClearinghouseState`, finds the row matching `hcTokenIndex`, and compares the `total` field against the balance recorded just before submission. First strictly-greater observation wins.
+`bridgeToCore` polls every ~1s up to the timeout. The detector reads `spotClearinghouseState`, finds the row matching `hcTokenIndex`, and compares the `total` field against the balance recorded before submitting the bridge transaction. This avoids waiting for a second phantom credit when HyperCore updates before the wallet returns control.
 
-This means: the EVM tx must confirm, Hyperliquid's relayer must observe it, and the HL state must reflect the credit before `bridgeToCore` resolves. On a healthy testnet that's typically 5–15 seconds.
+This means: the EVM tx must confirm, Hyperliquid's relayer must observe it, and the HL state must reflect the credit before `bridgeToCore` resolves. Healthy mainnet credits are often quick but can take around 1-2 minutes; the default timeout is 180 seconds.

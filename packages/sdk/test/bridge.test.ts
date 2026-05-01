@@ -13,6 +13,7 @@ import type { EvmWallet } from '../src/types/evm-wallet.js'
 import { silentLogger } from '../src/types/logger.js'
 
 const usdcEvmContract = '0x6b9e773128f453f5c2c60935ee2de2cbc5390a24'
+const nativeUsdc = '0xb88339cb7199b77e23db6e890353e22632ba630f'
 const sampleSpotMeta: SpotMeta = {
   universe: [{ name: 'USDH/USDC', tokens: [1, 0], index: 0, isCanonical: true }],
   tokens: [
@@ -68,6 +69,25 @@ function stubWallet(txHash = `0x${'f'.repeat(64)}`): EvmWallet & { calls: unknow
       return txHash as `0x${string}`
     },
     calls,
+  }
+}
+
+function stubInclusionAwareWallet(
+  txHash = `0x${'f'.repeat(64)}`,
+): EvmWallet & { calls: unknown[]; receipts: unknown[] } {
+  const calls: unknown[] = []
+  const receipts: unknown[] = []
+  return {
+    address: '0x0000000000000000000000000000000000000abc',
+    sendTransaction: async (req) => {
+      calls.push(req)
+      return txHash as `0x${string}`
+    },
+    waitForTransactionReceipt: async (hash, chainId) => {
+      receipts.push({ hash, chainId })
+    },
+    calls,
+    receipts,
   }
 }
 
@@ -184,11 +204,11 @@ describe('runBridgeToCore', () => {
     ).rejects.toBeInstanceOf(NetworkError)
   })
 
-  it('sends transfer to USDC contract with system-address payload, then resolves on credit', async () => {
+  it('approves native USDC then deposits into CoreDepositWallet for spot credit', async () => {
     // 100 USDC EVM = 100_000_000n (6 dec). HC will credit 10_000_000_000n in 8-dec units = "100".
     const info = stubInfo([stateWith('0'), stateWith('0'), stateWith('100')])
     const expectedHash = `0x${'a'.repeat(63)}1`
-    const wallet = stubWallet(expectedHash)
+    const wallet = stubInclusionAwareWallet(expectedHash)
     let t = 1_000_000_000_000
     const result = await runBridgeToCore(
       { asset: 'USDC', amount: 100_000_000n, user: baseUser },
@@ -206,13 +226,23 @@ describe('runBridgeToCore', () => {
     expect(result.txHash).toBe(expectedHash)
     expect(wallet.calls).toEqual([
       {
+        to: nativeUsdc,
+        data: expect.stringMatching(/^0x095ea7b3/),
+        chainId: 999,
+      },
+      {
         to: usdcEvmContract,
-        data: expect.stringMatching(/^0xa9059cbb/),
+        data: expect.stringMatching(/^0x2b2dfd2c/),
         chainId: 999,
       },
     ])
-    const sent = wallet.calls[0] as { data: string }
-    expect(sent.data).toContain('2000000000000000000000000000000000000000')
+    const approve = wallet.calls[0] as { data: string }
+    const deposit = wallet.calls[1] as { data: string }
+    expect(approve.data).toContain('6b9e773128f453f5c2c60935ee2de2cbc5390a24')
+    expect(deposit.data).toContain(
+      '00000000000000000000000000000000000000000000000000000000ffffffff',
+    )
+    expect(wallet.receipts).toEqual([{ hash: expectedHash, chainId: 999 }])
   })
 
   it('uses chainId 998 on testnet', async () => {
@@ -233,6 +263,7 @@ describe('runBridgeToCore', () => {
       },
     )
     expect((wallet.calls[0] as { chainId: number }).chainId).toBe(998)
+    expect((wallet.calls[1] as { chainId: number }).chainId).toBe(998)
   })
 
   it('detects credit via balance delta when user already had a prior balance', async () => {
@@ -242,6 +273,28 @@ describe('runBridgeToCore', () => {
     let t = 0
     const res = await runBridgeToCore(
       { asset: 'USDC', amount: 100_000_000n, user: baseUser },
+      {
+        info,
+        evmWallet: wallet,
+        network: 'mainnet',
+        logger: silentLogger,
+        now: () => t,
+        sleep: async () => {
+          t += 1_000
+        },
+      },
+    )
+    expect(res).toMatchObject({ txHash: expect.any(String) })
+  })
+
+  it('detects credit that is already visible immediately after wallet returns', async () => {
+    // Prior 5 USDC, bridge 11 USDC EVM. Rabby/mainnet can return control after
+    // HyperCore already shows the deposit, so the first poll may see 16.
+    const info = stubInfo([stateWith('5'), stateWith('16')])
+    const wallet = stubWallet()
+    let t = 0
+    const res = await runBridgeToCore(
+      { asset: 'USDC', amount: 11_000_000n, user: baseUser },
       {
         info,
         evmWallet: wallet,

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import { Providers } from '../components/Providers'
 import './globals.css'
-import '@usdh-kit/widget/styles.css'
+import '../../../../packages/widget/src/styles.css'
 
 export const metadata: Metadata = {
   title: 'usdh-kit demo',

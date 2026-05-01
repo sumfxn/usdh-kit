@@ -69,6 +69,23 @@ describe('computeActionHash', () => {
   it('rejects a non-20-byte vault address', () => {
     expect(() => computeActionHash(orderAction, 1n, '0x1234')).toThrow(SigningError)
   })
+
+  it('appends expiresAfter when provided', () => {
+    const nonce = 1735300000000n
+    const expiresAfter = nonce + 30_000n
+    const expected = bytesToHex(
+      keccak_256(
+        concatBytes(
+          msgpackEncode(orderAction),
+          bigintToBytesBE(nonce, 8),
+          Uint8Array.of(0x00),
+          Uint8Array.of(0x00),
+          bigintToBytesBE(expiresAfter, 8),
+        ),
+      ),
+    )
+    expect(computeActionHash(orderAction, nonce, undefined, expiresAfter)).toBe(expected)
+  })
 })
 
 describe('parseSignature', () => {
@@ -146,6 +163,22 @@ describe('signL1Action', () => {
     })
     const args = signTypedData.mock.calls[0]?.[0]
     expect(args?.message.source).toBe('b')
+  })
+
+  it('commits expiresAfter into the signed connectionId', async () => {
+    const signTypedData = vi.fn(
+      async () => `0x${'2'.repeat(64)}${'3'.repeat(64)}1b` as `0x${string}`,
+    )
+    const signer: Signer = { ...stubSigner, signTypedData }
+    await signL1Action({
+      signer,
+      action: orderAction,
+      nonce: 1n,
+      expiresAfter: 31_000n,
+      network: 'testnet',
+    })
+    const args = signTypedData.mock.calls[0]?.[0]
+    expect(args?.message.connectionId).toBe(computeActionHash(orderAction, 1n, undefined, 31_000n))
   })
 
   it('returns r/s/v parsed from the signer output', async () => {

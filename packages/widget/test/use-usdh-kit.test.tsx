@@ -6,12 +6,14 @@ import { useUsdhKit } from '../src/use-usdh-kit.js'
 const mockUseAccount = vi.fn<() => { address?: `0x${string}` }>()
 const mockUseWalletClient =
   vi.fn<() => { data: { sendTransaction: () => Promise<unknown> } | undefined }>()
+const mockUsePublicClient = vi.fn()
 const signTypedDataAsync = vi.fn()
 const signMessageAsync = vi.fn()
 
 vi.mock('wagmi', () => ({
   useAccount: () => mockUseAccount(),
   useWalletClient: () => mockUseWalletClient(),
+  usePublicClient: () => mockUsePublicClient(),
   useSignTypedData: () => ({ signTypedDataAsync }),
   useSignMessage: () => ({ signMessageAsync }),
 }))

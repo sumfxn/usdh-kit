@@ -8,13 +8,26 @@ const STUB_ADDRESS = '0x1234567890abcdef1234567890abcdef12345678' as const
 
 const mockUseAccount = vi.fn<() => { isConnected: boolean; address?: `0x${string}` }>()
 const mockUseWalletClient =
-  vi.fn<() => { data: { sendTransaction: () => Promise<unknown> } | undefined }>()
+  vi.fn<
+    () => {
+      data:
+        | {
+            sendTransaction: () => Promise<unknown>
+            signTypedData: () => Promise<`0x${string}`>
+            signMessage: () => Promise<`0x${string}`>
+          }
+        | undefined
+    }
+  >()
 const mockUseChainId = vi.fn<() => number>()
 const mockSwitchChain = vi.fn()
 const mockSignTypedDataAsync = vi.fn()
 const mockSignMessageAsync = vi.fn()
 const mockUseReadContract =
   vi.fn<() => { data: unknown; isLoading: boolean; refetch: () => void }>()
+const mockUsePublicClient = vi.fn()
+const mockGeneratePrivateKey = vi.fn<() => `0x${string}`>()
+const mockPrivateKeyToAccount = vi.fn()
 
 vi.mock('wagmi', () => ({
   useAccount: () => mockUseAccount(),
@@ -24,19 +37,35 @@ vi.mock('wagmi', () => ({
   useChainId: () => mockUseChainId(),
   useSwitchChain: () => ({ switchChain: mockSwitchChain, isPending: false }),
   useReadContract: () => mockUseReadContract(),
+  usePublicClient: () => mockUsePublicClient(),
 }))
 
-const mockHcQueryData = vi.fn<() => bigint | undefined>(() => undefined)
+vi.mock('viem/accounts', () => ({
+  generatePrivateKey: () => mockGeneratePrivateKey(),
+  privateKeyToAccount: (privateKey: `0x${string}`) => mockPrivateKeyToAccount(privateKey),
+}))
+
+const mockHcQueryData = vi.fn<() => { usdc: bigint; usdh: bigint | undefined } | undefined>(
+  () => undefined,
+)
 const mockTokenQueryData = vi.fn<() => unknown>(() => ({
-  evmAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
-  evmDecimals: 18,
-  hcWeiDecimals: 8,
-  hcTokenIndex: 0,
+  usdc: {
+    evmAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
+    evmDecimals: 18,
+    hcWeiDecimals: 8,
+    hcTokenIndex: 0,
+  },
+  usdh: {
+    evmAddress: '0x1111111111111111111111111111111111111111',
+    evmDecimals: 18,
+    hcWeiDecimals: 8,
+    hcTokenIndex: 1,
+  },
 }))
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
-    if (queryKey.includes('usdc-token-info')) {
+    if (queryKey.includes('stable-token-info')) {
       return { data: mockTokenQueryData(), isLoading: false, refetch: vi.fn() }
     }
     return { data: mockHcQueryData(), isLoading: false, refetch: vi.fn() }
@@ -45,8 +74,9 @@ vi.mock('@tanstack/react-query', () => ({
 
 const mockPreflightSwap = vi.fn()
 const mockBridgeAndSwap = vi.fn()
+const mockApproveAgent = vi.fn()
 
-function makeQuote(estimatedReceived = 1_000_000n) {
+function makeQuote(estimatedReceived = 11_000_000n) {
   return {
     pair: 'USDH/USDC',
     midPrice: 1_000_000_000_000_000_000n,
@@ -73,7 +103,7 @@ function makeRoute(
   const hypercoreBalance = overrides.hypercoreBalance ?? 0n
   return {
     from: 'USDC',
-    amount: overrides.amount ?? 1_000_000n,
+    amount: overrides.amount ?? 11_000_000n,
     sourceChain,
     requiresBridge: overrides.requiresBridge ?? sourceChain === 'hyperevm',
     canSwap: overrides.canSwap ?? true,
@@ -82,7 +112,7 @@ function makeRoute(
     hypercoreTotal: overrides.hypercoreTotal ?? hypercoreBalance,
     hypercoreHold: overrides.hypercoreHold ?? 0n,
     hypercoreDecimals: overrides.hypercoreDecimals ?? 8,
-    requiredHypercoreBalance: overrides.requiredHypercoreBalance ?? 100_400_000n,
+    requiredHypercoreBalance: overrides.requiredHypercoreBalance ?? 1_104_400_000n,
   }
 }
 
@@ -100,7 +130,7 @@ function makeBridgeAndSwapResult(
     ...(overrides.bridge !== undefined && { bridge: overrides.bridge }),
     swap: {
       orderId: overrides.orderId ?? 'order-42',
-      received: overrides.received ?? 1_000_000n,
+      received: overrides.received ?? 11_000_000n,
       spent: route.amount,
       price: 1_000_000_000_000_000_000n,
       slippageBps: 0,
@@ -109,6 +139,7 @@ function makeBridgeAndSwapResult(
 }
 
 vi.mock('@usdh-kit/sdk', () => ({
+  approveAgent: (...args: unknown[]) => mockApproveAgent(...args),
   createUsdhKit: () => ({
     preflightSwap: mockPreflightSwap,
     bridgeAndSwap: mockBridgeAndSwap,
@@ -117,6 +148,7 @@ vi.mock('@usdh-kit/sdk', () => ({
     spotMeta: vi.fn(),
     spotClearinghouseState: vi.fn(),
   }),
+  getHyperEvmNativeUsdcAddress: () => '0xb88339cb7199b77e23db6e890353e22632ba630f',
   BridgeAndSwapError: class extends Error {
     phase: string
     cause: unknown
@@ -142,28 +174,72 @@ vi.mock('@usdh-kit/sdk', () => ({
   UsdhKitError: class extends Error {},
 }))
 
-function setConnected({ chainId = HYPER_EVM_MAINNET_ID }: { chainId?: number } = {}) {
+function setConnected({
+  chainId = HYPER_EVM_MAINNET_ID,
+  withSession = true,
+}: { chainId?: number; withSession?: boolean } = {}) {
   mockUseAccount.mockReturnValue({ isConnected: true, address: STUB_ADDRESS })
   mockUseWalletClient.mockReturnValue({
-    data: { sendTransaction: () => Promise.resolve('0xtx') },
+    data: {
+      sendTransaction: () => Promise.resolve('0xtx'),
+      signTypedData: () => Promise.resolve(`0x${'c'.repeat(130)}` as `0x${string}`),
+      signMessage: () => Promise.resolve('0x0'),
+    },
   })
+  if (withSession) seedAgentSession()
   mockUseChainId.mockReturnValue(chainId)
   mockUseReadContract.mockReturnValue({
     data: 1_000_000_000_000_000_000_000n,
     isLoading: false,
     refetch: vi.fn(),
   })
-  mockHcQueryData.mockReturnValue(0n)
+  mockUsePublicClient.mockReturnValue({
+    waitForTransactionReceipt: vi.fn(async () => undefined),
+  })
+  mockHcQueryData.mockReturnValue({ usdc: 0n, usdh: 0n })
+}
+
+function seedAgentSession(network: 'mainnet' | 'testnet' = 'mainnet') {
+  window.sessionStorage.setItem(
+    `usdh-kit:agent-session:${network}:${STUB_ADDRESS.toLowerCase()}`,
+    JSON.stringify({
+      version: 1,
+      network,
+      accountAddress: STUB_ADDRESS.toLowerCase(),
+      agentAddress: '0x00000000000000000000000000000000000000aa',
+      agentName: `usdh-kit-${network}`,
+      privateKey: `0x${'1'.repeat(64)}`,
+      createdAt: Date.now(),
+    }),
+  )
 }
 
 describe('USDHSwap', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    window.sessionStorage.clear()
+    mockGeneratePrivateKey.mockReturnValue(`0x${'2'.repeat(64)}`)
+    mockPrivateKeyToAccount.mockReturnValue({
+      address: '0x00000000000000000000000000000000000000aa',
+      signTypedData: () => Promise.resolve(`0x${'a'.repeat(64)}${'b'.repeat(64)}1c`),
+      signMessage: () => Promise.resolve('0x0'),
+    })
+    mockApproveAgent.mockResolvedValue({
+      agentAddress: '0x00000000000000000000000000000000000000aa',
+    })
     mockTokenQueryData.mockReturnValue({
-      evmAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
-      evmDecimals: 18,
-      hcWeiDecimals: 8,
-      hcTokenIndex: 0,
+      usdc: {
+        evmAddress: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
+        evmDecimals: 18,
+        hcWeiDecimals: 8,
+        hcTokenIndex: 0,
+      },
+      usdh: {
+        evmAddress: '0x1111111111111111111111111111111111111111',
+        evmDecimals: 18,
+        hcWeiDecimals: 8,
+        hcTokenIndex: 1,
+      },
     })
     mockHcQueryData.mockReturnValue(undefined)
     mockPreflightSwap.mockResolvedValue(makeRoute())
@@ -253,7 +329,7 @@ describe('USDHSwap', () => {
 
   it('auto-fetches a quote (debounced) and renders the rounded receive estimate without bps noise', async () => {
     setConnected()
-    mockPreflightSwap.mockResolvedValue(makeRoute({ estimatedReceived: 999_800n }))
+    mockPreflightSwap.mockResolvedValue(makeRoute({ estimatedReceived: 10_999_800n }))
 
     render(<USDHSwap network="mainnet" />)
 
@@ -264,7 +340,7 @@ describe('USDHSwap', () => {
       { timeout: 2_000 },
     )
     await waitFor(() => {
-      expect(screen.getByText('0.9998')).toBeInTheDocument()
+      expect(screen.getByText('10.9998')).toBeInTheDocument()
     })
     // No bps drift noise rendered anywhere.
     expect(screen.queryByText(/bps/)).not.toBeInTheDocument()
@@ -274,22 +350,22 @@ describe('USDHSwap', () => {
   it('clears the previous quote as soon as the amount changes', async () => {
     setConnected()
     mockPreflightSwap
-      .mockResolvedValueOnce(makeRoute({ estimatedReceived: 999_800n }))
+      .mockResolvedValueOnce(makeRoute({ estimatedReceived: 10_999_800n }))
       .mockImplementationOnce(() => new Promise(() => {}))
 
-    render(<USDHSwap network="mainnet" defaultAmount="1" />)
+    render(<USDHSwap network="mainnet" defaultAmount="11" />)
 
     await waitFor(
       () => {
-        expect(screen.getByText('0.9998')).toBeInTheDocument()
+        expect(screen.getByText('10.9998')).toBeInTheDocument()
       },
       { timeout: 2_000 },
     )
 
-    fireEvent.change(screen.getByLabelText('Amount in USDC'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Amount in USDC'), { target: { value: '12' } })
 
-    expect(screen.queryByText('0.9998')).not.toBeInTheDocument()
-    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.queryByText('10.9998')).not.toBeInTheDocument()
+    expect(screen.getByText('12')).toBeInTheDocument()
   })
 
   it('surfaces a friendly error when the auto-quote rejects', async () => {
@@ -320,6 +396,19 @@ describe('USDHSwap', () => {
     expect(screen.getByRole('button', { name: 'Insufficient HyperEVM USDC' })).toBeDisabled()
   })
 
+  it('blocks amounts at Hyperliquid minimum notional before sending a swap', () => {
+    setConnected()
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
+
+    render(<USDHSwap network="mainnet" defaultAmount="10" />)
+
+    expect(screen.getByText(/Use 11\+ USDC/)).toBeInTheDocument()
+    const button = screen.getByRole('button', { name: 'Minimum 11 USDC' })
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(mockBridgeAndSwap).not.toHaveBeenCalled()
+  })
+
   it('keeps the swap button disabled until route balances are loaded', () => {
     setConnected()
     mockUseReadContract.mockReturnValue({ data: undefined, isLoading: true, refetch: vi.fn() })
@@ -335,6 +424,36 @@ describe('USDHSwap', () => {
     expect(mockBridgeAndSwap).not.toHaveBeenCalled()
   })
 
+  it('requires an explicit trading session before the first swap', async () => {
+    setConnected({ withSession: false })
+    mockPreflightSwap.mockResolvedValue(makeRoute())
+
+    render(<USDHSwap network="mainnet" />)
+
+    await waitFor(
+      () => {
+        expect(screen.getByRole('button', { name: 'Enable trading session' })).toBeInTheDocument()
+      },
+      { timeout: 2_000 },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Enable trading session' }))
+
+    await waitFor(() => {
+      expect(mockApproveAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          network: 'mainnet',
+          agentAddress: '0x00000000000000000000000000000000000000aa',
+          agentName: 'usdh-kit-mainnet',
+          signatureChainId: 999,
+        }),
+      )
+    })
+    expect(mockBridgeAndSwap).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Bridge and swap' })).toBeInTheDocument()
+    })
+  })
+
   it('shows the inline system-address note up front and runs bridge+swap directly on click', async () => {
     setConnected()
     mockPreflightSwap.mockResolvedValue(makeRoute())
@@ -347,18 +466,20 @@ describe('USDHSwap', () => {
 
     render(<USDHSwap network="mainnet" onSwapComplete={onSwapComplete} />)
 
-    // Inline note shows the system address up front, no intermediate confirm
+    // Inline note shows the bridge shape up front, no intermediate confirm
     // card; clicking the action button delegates the lifecycle to the SDK.
-    expect(screen.getByText(/0x2000…0000/)).toBeInTheDocument()
+    expect(screen.getByText(/approve USDC, then deposit it to HyperCore spot/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Bridge and swap' }))
 
     await waitFor(() => {
       expect(screen.getByText('Filled')).toBeInTheDocument()
     })
+    expect(screen.queryByText(/Exceeds your/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Bridge and swap' })).not.toBeInTheDocument()
     expect(mockBridgeAndSwap).toHaveBeenCalledWith(
       expect.objectContaining({
         from: 'USDC',
-        amount: 1_000_000n,
+        amount: 11_000_000n,
         slippageBps: 30,
         sourceChain: 'auto',
         onProgress: expect.any(Function),
@@ -366,7 +487,7 @@ describe('USDHSwap', () => {
     )
     expect(onSwapComplete).toHaveBeenCalledWith({
       orderId: 'order-42',
-      receivedUsdh: 1_000_000n,
+      receivedUsdh: 11_000_000n,
       txHash: '0xabcdef0123456789abcdef0123456789abcdef01',
     })
   })
@@ -396,6 +517,7 @@ describe('USDHSwap', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Bridging/ })).toBeDisabled()
     })
+    expect(screen.getByText(/Bridging usually credits in about 1-2 minutes/)).toBeInTheDocument()
 
     startSwap()
     await waitFor(() => {
@@ -427,14 +549,13 @@ describe('USDHSwap', () => {
 
   it('skips the bridge step when the user already has enough USDC on HyperCore', async () => {
     setConnected()
-    // 1.5 USDC on HC at 8 weiDecimals → 150_000_000n. Default amount is 1 USDC,
-    // requiring 100_000_000n in HC units, so HC is sufficient and bridge is skipped.
-    mockHcQueryData.mockReturnValue(150_000_000n)
+    // 20 USDC on HC at 8 weiDecimals covers the 11 USDC default amount.
+    mockHcQueryData.mockReturnValue({ usdc: 2_000_000_000n, usdh: 0n })
     mockPreflightSwap.mockResolvedValue(
       makeRoute({
         sourceChain: 'hypercore',
         requiresBridge: false,
-        hypercoreBalance: 150_000_000n,
+        hypercoreBalance: 2_000_000_000n,
       }),
     )
     mockBridgeAndSwap.mockResolvedValue(
@@ -442,7 +563,7 @@ describe('USDHSwap', () => {
         route: makeRoute({
           sourceChain: 'hypercore',
           requiresBridge: false,
-          hypercoreBalance: 150_000_000n,
+          hypercoreBalance: 2_000_000_000n,
         }),
         orderId: 'order-7',
       }),
@@ -463,6 +584,8 @@ describe('USDHSwap', () => {
     await waitFor(() => {
       expect(screen.getByText('Filled')).toBeInTheDocument()
     })
+    expect(screen.queryByRole('button', { name: 'Swap' })).not.toBeInTheDocument()
+    expect(screen.queryByText('SLIPPAGE')).not.toBeInTheDocument()
     expect(mockBridgeAndSwap).toHaveBeenCalledWith(
       expect.objectContaining({ sourceChain: 'auto', onProgress: expect.any(Function) }),
     )
@@ -470,13 +593,13 @@ describe('USDHSwap', () => {
 
   it('lets the user toggle source chain via the pill button', async () => {
     setConnected()
-    // 5 USDC on HC — covers the 1 USDC default even with slippage + fee buffer.
-    mockHcQueryData.mockReturnValue(500_000_000n)
+    // 20 USDC on HC covers the 11 USDC default even with slippage + fee buffer.
+    mockHcQueryData.mockReturnValue({ usdc: 2_000_000_000n, usdh: 0n })
     mockPreflightSwap.mockResolvedValue(
       makeRoute({
         sourceChain: 'hypercore',
         requiresBridge: false,
-        hypercoreBalance: 500_000_000n,
+        hypercoreBalance: 2_000_000_000n,
       }),
     )
 
@@ -500,10 +623,10 @@ describe('USDHSwap', () => {
 
   it('still requires the bridge when HC balance equals the trade exactly (slippage+fee buffer)', async () => {
     setConnected()
-    // Default amount = 1 USDC, default slippage 30 bps + 10 bps fee buffer
-    // means we need 1.004 USDC on HC to skip the bridge. 1.0 exactly is short.
-    mockHcQueryData.mockReturnValue(100_000_000n)
-    mockPreflightSwap.mockResolvedValue(makeRoute({ hypercoreBalance: 100_000_000n }))
+    // Default amount = 11 USDC, default slippage 30 bps + 10 bps fee buffer
+    // means we need 11.044 USDC on HC to skip the bridge. 11.0 exactly is short.
+    mockHcQueryData.mockReturnValue({ usdc: 1_100_000_000n, usdh: 0n })
+    mockPreflightSwap.mockResolvedValue(makeRoute({ hypercoreBalance: 1_100_000_000n }))
 
     render(<USDHSwap network="mainnet" />)
 
@@ -522,9 +645,9 @@ describe('USDHSwap', () => {
             resolveStale = r as (q: unknown) => void
           }),
       )
-      .mockResolvedValueOnce(makeRoute({ amount: 2_000_000n, estimatedReceived: 2_000_000n }))
+      .mockResolvedValueOnce(makeRoute({ amount: 12_000_000n, estimatedReceived: 12_000_000n }))
 
-    render(<USDHSwap network="mainnet" defaultAmount="1" />)
+    render(<USDHSwap network="mainnet" defaultAmount="11" />)
     await waitFor(
       () => {
         expect(mockPreflightSwap).toHaveBeenCalledTimes(1)
@@ -532,7 +655,7 @@ describe('USDHSwap', () => {
       { timeout: 2_000 },
     )
 
-    fireEvent.change(screen.getByLabelText('Amount in USDC'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Amount in USDC'), { target: { value: '12' } })
 
     await waitFor(
       () => {
@@ -541,7 +664,7 @@ describe('USDHSwap', () => {
       { timeout: 2_000 },
     )
     await waitFor(() => {
-      expect(screen.getByText('2')).toBeInTheDocument()
+      expect(screen.getByText('12')).toBeInTheDocument()
     })
 
     // Late-arriving response from the stale request must NOT clobber the

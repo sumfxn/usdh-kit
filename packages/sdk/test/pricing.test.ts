@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { InvalidInputError, NetworkError } from '../src/errors.js'
-import { applyPriceInverse, midPrice18, parseDecimal } from '../src/pricing.js'
+import { applyPriceInverse, formatSpotPrice, midPrice18, parseDecimal } from '../src/pricing.js'
 import type { L2Book } from '../src/transport/types.js'
 
 describe('parseDecimal', () => {
@@ -91,5 +91,22 @@ describe('applyPriceInverse', () => {
   it('rejects non-positive price', () => {
     expect(() => applyPriceInverse(1n, 0n)).toThrow(InvalidInputError)
     expect(() => applyPriceInverse(1n, -1n)).toThrow(InvalidInputError)
+  })
+})
+
+describe('formatSpotPrice', () => {
+  it('caps spot prices to 5 significant figures', () => {
+    expect(formatSpotPrice(parseDecimal('1234.5678', 18), 2)).toBe('1234.5')
+    expect(formatSpotPrice(parseDecimal('0.000123456', 18), 0)).toBe('0.00012345')
+  })
+
+  it('caps spot price decimals using 8 - szDecimals', () => {
+    expect(formatSpotPrice(parseDecimal('1.003', 18), 8)).toBe('1')
+    expect(formatSpotPrice(parseDecimal('1.003', 18), 6)).toBe('1')
+    expect(formatSpotPrice(parseDecimal('0.12345678', 18), 2)).toBe('0.12345')
+  })
+
+  it('rejects prices that truncate to zero', () => {
+    expect(() => formatSpotPrice(parseDecimal('0.1', 18), 8)).toThrow(InvalidInputError)
   })
 })

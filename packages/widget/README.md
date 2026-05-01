@@ -14,23 +14,21 @@ The widget reads the connected wallet from wagmi. Wrap your tree in `WagmiProvid
 
 ```tsx
 import { USDHSwap } from '@usdh-kit/widget'
+import '@usdh-kit/widget/styles.css'
 
 export default function Page() {
   return <USDHSwap network="mainnet" />
 }
 ```
 
-The hook is exposed too, for composing custom UIs:
+The full widget manages a short-lived Hyperliquid agent wallet session before swapping. For custom UIs, prefer the SDK primitives (`approveAgent`, `accountAddress`, and `createUsdhKit`) so reads use the master wallet while L1 orders are signed by an approved agent.
 
-```tsx
-import { useUsdhKit } from '@usdh-kit/widget'
+For HyperEVM-funded swaps, users should expect:
 
-function CustomSwap() {
-  const kit = useUsdhKit('mainnet')
-  if (!kit) return null
-  // call kit.preflightSwap or kit.bridgeAndSwap for a custom flow
-}
-```
+1. one wallet signature to enable the trading session on first use
+2. one USDC approval transaction if allowance is not already sufficient
+3. one USDC deposit transaction into HyperCore
+4. no wallet popup for the final USDH order; the approved session agent signs it
 
 ## Styling
 
@@ -67,6 +65,16 @@ import '@usdh-kit/widget/styles.css'
 ```ts
 type USDHSwapProps = {
   network: 'mainnet' | 'testnet'
+  hideNetworkToggle?: boolean
+  hideAttribution?: boolean
+  theme?: 'dark' | 'light' | 'auto'
+  defaultSlippageBps?: number
+  defaultAmount?: string
+  onSwapComplete?: (result: {
+    orderId: string
+    receivedUsdh: bigint
+    txHash?: `0x${string}`
+  }) => void
 }
 ```
 

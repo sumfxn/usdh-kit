@@ -33,7 +33,7 @@ export function friendlyError(err: unknown): string {
     return 'Connect a wallet to continue.'
   }
   if (err instanceof BridgeTimeoutError) {
-    return 'Bridge timed out before HyperCore credited the deposit. Funds are safe; retry to keep waiting.'
+    return 'Bridge is still settling. Funds are safe; refresh or retry in a moment to continue from HyperCore.'
   }
   if (err instanceof InsufficientBalanceError) {
     return `Insufficient ${err.token}. Add funds and retry.`

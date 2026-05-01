@@ -12,7 +12,7 @@ export interface BridgeInput {
    * decimals automatically.
    */
   amount: bigint
-  /** Override the default credit poll timeout (ms). Defaults to 30_000. */
+  /** Override the default credit poll timeout (ms). Defaults to 180_000. */
   waitForCreditTimeoutMs?: number
 }
 

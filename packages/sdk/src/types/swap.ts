@@ -24,7 +24,10 @@ export interface RouteInput extends SwapInput {
   sourceChain?: SourceChain | 'auto'
 }
 
-export type RouteBlockReason = 'insufficient_hypercore_balance' | 'missing_evm_wallet'
+export type RouteBlockReason =
+  | 'below_min_order_value'
+  | 'insufficient_hypercore_balance'
+  | 'missing_evm_wallet'
 
 export interface HypercoreBalanceInput {
   asset: SourceStable
@@ -63,7 +66,7 @@ export interface SwapRoute {
 }
 
 export interface BridgeAndSwapInput extends RouteInput {
-  /** Override the default bridge credit poll timeout (ms). Defaults to 30_000. */
+  /** Override the default bridge credit poll timeout (ms). Defaults to 180_000. */
   waitForCreditTimeoutMs?: number
   /** Optional lifecycle callback for apps that want progress UI. */
   onProgress?: (event: BridgeAndSwapEvent) => void
