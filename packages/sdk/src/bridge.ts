@@ -1,4 +1,4 @@
-import { encodeErc20Transfer } from './abi.js'
+import { encodeCoreDeposit, encodeErc20Approve, encodeErc20Transfer } from './abi.js'
 import { bigintToBytesBE, bytesToHex } from './bytes.js'
 import {
   BridgeTimeoutError,
@@ -13,6 +13,7 @@ import type { EvmWallet } from './types/evm-wallet.js'
 import type { Address, Hex } from './types/hex.js'
 import type { Logger } from './types/logger.js'
 import type { Network } from './types/network.js'
+import { getHyperEvmNativeUsdcAddress } from './usdc.js'
 
 /** HyperEVM chain ids per network. */
 const HYPER_EVM_CHAIN_ID: Record<Network, number> = {
@@ -20,8 +21,9 @@ const HYPER_EVM_CHAIN_ID: Record<Network, number> = {
   testnet: 998,
 }
 
-const DEFAULT_CREDIT_TIMEOUT_MS = 30_000
+const DEFAULT_CREDIT_TIMEOUT_MS = 180_000
 const CREDIT_POLL_INTERVAL_MS = 1_000
+const SPOT_DEX_ID = 0xffffffff
 
 const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
 
@@ -69,6 +71,13 @@ function findStableToken(meta: SpotMeta, asset: BridgeAsset): SpotToken {
   return token
 }
 
+function evmSourceAddress(network: Network, asset: BridgeAsset, linkedContract: Address): Address {
+  if (asset === 'USDC') {
+    return getHyperEvmNativeUsdcAddress(network)
+  }
+  return linkedContract
+}
+
 /** Convert an EVM-unit amount to the HyperCore-unit equivalent. */
 export function evmToCoreUnits(amountEvm: bigint, evmExtraDecimals: number): bigint {
   // HC weiDecimals = EVM decimals - evmExtraWeiDecimals  → credit in HC units
@@ -112,8 +121,11 @@ export interface BridgeRunArgs extends BridgeInput {
 }
 
 /**
- * Send the HyperEVM ERC20 transfer to the token's system address, then poll
+ * Send the HyperEVM bridge transaction, then poll
  * `spotClearinghouseState` until the HyperCore balance reflects the deposit.
+ * USDC is special: Circle native USDC must approve and deposit into the
+ * CoreDepositWallet exposed by `spotMeta`, rather than transferring directly
+ * to that wallet address.
  *
  * Concurrency caveat: callers MUST NOT overlap two `bridgeToCore` calls for
  * the same `(user, asset)` pair. The credit detector watches a balance delta
@@ -147,7 +159,8 @@ export async function runBridgeToCore(
   if (!evmContractRaw) {
     throw new NetworkError(`${args.asset} HyperEVM contract resolved to undefined`)
   }
-  const evmContract = normalizeAddress(evmContractRaw)
+  const linkedContract = normalizeAddress(evmContractRaw)
+  const evmSource = evmSourceAddress(network, args.asset, linkedContract)
   const sysAddress = tokenSystemAddress(token.index)
   const userAddress = normalizeAddress(args.user)
   const evmExtra = token.evmContract?.evm_extra_wei_decimals ?? 0
@@ -157,27 +170,26 @@ export async function runBridgeToCore(
     asset: args.asset,
     amount: args.amount.toString(),
     sysAddress,
-    evmContract,
+    evmContract: evmSource,
     tokenIndex: token.index,
     network,
   })
 
-  const data: Hex = encodeErc20Transfer(sysAddress, args.amount)
-  const txHashRaw = await evmWallet.sendTransaction({
-    to: evmContract,
-    data,
-    chainId: HYPER_EVM_CHAIN_ID[network],
-  })
-  if (!TX_HASH_PATTERN.test(txHashRaw)) {
-    throw new NetworkError(`evmWallet returned malformed tx hash: ${txHashRaw}`)
-  }
-  const txHash = txHashRaw.toLowerCase() as Hex
-  logger.info('bridge.submitted', { txHash, asset: args.asset })
-
-  // Snapshot AFTER broadcast so a credit that lands between meta-fetch and
-  // sendTransaction (e.g. an unrelated parallel deposit) is excluded from
-  // our delta — narrows but does not eliminate the race.
+  // Snapshot before submitting the deposit. On the native USDC path, HyperCore
+  // credit can be visible by the time the wallet returns from the transaction
+  // flow, so a post-submit snapshot can accidentally wait for a second deposit.
   const balanceBefore = await readCoreBalance(info, userAddress, token.index, token.weiDecimals)
+
+  const txHash = await submitBridgeTransaction({
+    asset: args.asset,
+    amount: args.amount,
+    evmWallet,
+    network,
+    evmSource,
+    linkedContract,
+    sysAddress,
+  })
+  logger.info('bridge.submitted', { txHash, asset: args.asset })
 
   const deadline = now() + timeoutMs
   while (now() < deadline) {
@@ -197,4 +209,45 @@ export async function runBridgeToCore(
     await sleep(CREDIT_POLL_INTERVAL_MS)
   }
   throw new BridgeTimeoutError(txHash, timeoutMs)
+}
+
+async function submitBridgeTransaction(args: {
+  asset: BridgeAsset
+  amount: bigint
+  evmWallet: EvmWallet
+  network: Network
+  evmSource: Address
+  linkedContract: Address
+  sysAddress: Address
+}): Promise<Hex> {
+  const chainId = HYPER_EVM_CHAIN_ID[args.network]
+  if (args.asset === 'USDC') {
+    const approveHash = await sendAndValidate(args.evmWallet, {
+      to: args.evmSource,
+      data: encodeErc20Approve(args.linkedContract, args.amount),
+      chainId,
+    })
+    await args.evmWallet.waitForTransactionReceipt?.(approveHash, chainId)
+    return sendAndValidate(args.evmWallet, {
+      to: args.linkedContract,
+      data: encodeCoreDeposit(args.amount, SPOT_DEX_ID),
+      chainId,
+    })
+  }
+  return sendAndValidate(args.evmWallet, {
+    to: args.evmSource,
+    data: encodeErc20Transfer(args.sysAddress, args.amount),
+    chainId,
+  })
+}
+
+async function sendAndValidate(
+  evmWallet: EvmWallet,
+  req: { to: Address; data: Hex; chainId: number },
+): Promise<Hex> {
+  const txHashRaw = await evmWallet.sendTransaction(req)
+  if (!TX_HASH_PATTERN.test(txHashRaw)) {
+    throw new NetworkError(`evmWallet returned malformed tx hash: ${txHashRaw}`)
+  }
+  return txHashRaw.toLowerCase() as Hex
 }

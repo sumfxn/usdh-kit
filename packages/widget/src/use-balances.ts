@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { type SpotMeta, createInfoClient } from '@usdh-kit/sdk'
+import { type SpotMeta, createInfoClient, getHyperEvmNativeUsdcAddress } from '@usdh-kit/sdk'
 import { useMemo } from 'react'
 import { erc20Abi } from 'viem'
 import { useReadContract } from 'wagmi'
@@ -16,25 +16,48 @@ export interface UsdcBalances {
   evmDecimals: number | undefined
   hc: bigint | undefined
   hcDecimals: number | undefined
+  evmUsdh: bigint | undefined
+  evmUsdhDecimals: number | undefined
+  hcUsdh: bigint | undefined
+  hcUsdhDecimals: number | undefined
   isLoading: boolean
   refetch: () => void
 }
 
-interface UsdcTokenInfo {
-  evmAddress: `0x${string}`
-  evmDecimals: number
+interface StableTokenInfo {
+  usdc: TokenInfo | null
+  usdh: TokenInfo | null
+}
+
+interface TokenInfo {
+  evmAddress: `0x${string}` | undefined
+  evmDecimals: number | undefined
   hcWeiDecimals: number
   hcTokenIndex: number
 }
 
-function resolveUsdc(meta: SpotMeta): UsdcTokenInfo | null {
-  const usdc = meta.tokens.find((t) => t.name === 'USDC')
-  if (!usdc?.evmContract?.address) return null
+function resolveStableTokens(network: HyperNetwork, meta: SpotMeta): StableTokenInfo {
   return {
-    evmAddress: usdc.evmContract.address as `0x${string}`,
-    evmDecimals: usdc.weiDecimals + (usdc.evmContract.evm_extra_wei_decimals ?? 0),
-    hcWeiDecimals: usdc.weiDecimals,
-    hcTokenIndex: usdc.index,
+    usdc: resolveToken(meta, 'USDC', getHyperEvmNativeUsdcAddress(network)),
+    usdh: resolveToken(meta, 'USDH'),
+  }
+}
+
+function resolveToken(
+  meta: SpotMeta,
+  name: 'USDC' | 'USDH',
+  evmAddressOverride?: `0x${string}`,
+): TokenInfo | null {
+  const token = meta.tokens.find((t) => t.name === name)
+  if (!token) return null
+  return {
+    evmAddress: evmAddressOverride ?? (token.evmContract?.address as `0x${string}` | undefined),
+    evmDecimals:
+      token.evmContract === undefined || token.evmContract === null
+        ? undefined
+        : token.weiDecimals + (token.evmContract.evm_extra_wei_decimals ?? 0),
+    hcWeiDecimals: token.weiDecimals,
+    hcTokenIndex: token.index,
   }
 }
 
@@ -50,51 +73,80 @@ export function useUsdcBalances(
   const info = useMemo(() => createInfoClient({ network }), [network])
 
   const tokenQuery = useQuery({
-    queryKey: ['usdh-kit', network, 'usdc-token-info'],
-    queryFn: async () => resolveUsdc(await info.spotMeta()),
+    queryKey: ['usdh-kit', network, 'stable-token-info'],
+    queryFn: async () => resolveStableTokens(network, await info.spotMeta()),
     staleTime: 5 * 60_000,
   })
 
-  const token = tokenQuery.data ?? null
+  const usdc = tokenQuery.data?.usdc ?? null
+  const usdh = tokenQuery.data?.usdh ?? null
 
   const hcQuery = useQuery({
-    queryKey: ['usdh-kit', network, 'hc-balance', address ?? ''],
-    enabled: Boolean(address && token),
-    queryFn: async (): Promise<bigint> => {
-      if (!address || !token) return 0n
+    queryKey: ['usdh-kit', network, 'hc-stable-balances', address ?? ''],
+    enabled: Boolean(address && usdc),
+    queryFn: async (): Promise<{ usdc: bigint; usdh: bigint | undefined }> => {
+      if (!address || !usdc) return { usdc: 0n, usdh: undefined }
       const state = await info.spotClearinghouseState(address)
-      const row = state.balances.find((b) => b.token === token.hcTokenIndex)
-      if (!row) return 0n
-      const total = parseHcAmount(row.total, token.hcWeiDecimals)
-      const hold = parseHcAmount(row.hold, token.hcWeiDecimals)
-      return total > hold ? total - hold : 0n
+      return {
+        usdc: readHcBalance(state.balances, usdc),
+        usdh: usdh ? readHcBalance(state.balances, usdh) : undefined,
+      }
     },
     refetchInterval: REFRESH_INTERVAL_MS,
   })
 
-  const evmRead = useReadContract({
+  const evmUsdcRead = useReadContract({
     abi: erc20Abi,
-    address: token?.evmAddress,
+    address: usdc?.evmAddress,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     chainId: HYPER_EVM_CHAIN_ID[network],
     query: {
-      enabled: Boolean(address && token),
+      enabled: Boolean(address && usdc?.evmAddress),
+      refetchInterval: REFRESH_INTERVAL_MS,
+    },
+  })
+
+  const evmUsdhRead = useReadContract({
+    abi: erc20Abi,
+    address: usdh?.evmAddress,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    chainId: HYPER_EVM_CHAIN_ID[network],
+    query: {
+      enabled: Boolean(address && usdh?.evmAddress),
       refetchInterval: REFRESH_INTERVAL_MS,
     },
   })
 
   return {
-    evm: typeof evmRead.data === 'bigint' ? evmRead.data : undefined,
-    evmDecimals: token?.evmDecimals,
-    hc: hcQuery.data,
-    hcDecimals: token?.hcWeiDecimals,
-    isLoading: tokenQuery.isLoading || hcQuery.isLoading || evmRead.isLoading,
+    evm: typeof evmUsdcRead.data === 'bigint' ? evmUsdcRead.data : undefined,
+    evmDecimals: usdc?.evmDecimals,
+    hc: hcQuery.data?.usdc,
+    hcDecimals: usdc?.hcWeiDecimals,
+    evmUsdh: typeof evmUsdhRead.data === 'bigint' ? evmUsdhRead.data : undefined,
+    evmUsdhDecimals: usdh?.evmDecimals,
+    hcUsdh: hcQuery.data?.usdh,
+    hcUsdhDecimals: usdh?.hcWeiDecimals,
+    isLoading:
+      tokenQuery.isLoading || hcQuery.isLoading || evmUsdcRead.isLoading || evmUsdhRead.isLoading,
     refetch: () => {
       hcQuery.refetch()
-      evmRead.refetch()
+      evmUsdcRead.refetch()
+      evmUsdhRead.refetch()
     },
   }
+}
+
+function readHcBalance(
+  rows: Array<{ token: number; total: string; hold: string }>,
+  token: TokenInfo,
+): bigint {
+  const row = rows.find((b) => b.token === token.hcTokenIndex)
+  if (!row) return 0n
+  const total = parseHcAmount(row.total, token.hcWeiDecimals)
+  const hold = parseHcAmount(row.hold, token.hcWeiDecimals)
+  return total > hold ? total - hold : 0n
 }
 
 function parseHcAmount(value: string, weiDecimals: number): bigint {

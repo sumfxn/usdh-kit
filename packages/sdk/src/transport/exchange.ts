@@ -24,6 +24,7 @@ export interface SubmitArgs {
   /** Nonce in milliseconds since epoch (HL spec). */
   nonce: bigint
   vaultAddress?: Address
+  expiresAfter?: bigint
 }
 
 export interface ExchangeClient {
@@ -85,6 +86,7 @@ export function createExchangeClient(config: ExchangeClientConfig): ExchangeClie
         nonce: Number(args.nonce),
         signature: args.signature,
         ...(args.vaultAddress !== undefined && { vaultAddress: args.vaultAddress }),
+        ...(args.expiresAfter !== undefined && { expiresAfter: Number(args.expiresAfter) }),
       }
 
       const controller = new AbortController()

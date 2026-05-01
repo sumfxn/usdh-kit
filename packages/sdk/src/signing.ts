@@ -34,6 +34,7 @@ export interface SignL1ActionArgs {
   nonce: bigint
   network: Network
   vaultAddress?: Address
+  expiresAfter?: bigint
 }
 
 /**
@@ -47,7 +48,12 @@ export interface SignL1ActionArgs {
  * commitment; the EIP-712 domain is HL-specific (chainId 1337 by spec).
  */
 export async function signL1Action(args: SignL1ActionArgs): Promise<L1Signature> {
-  const connectionId = computeActionHash(args.action, args.nonce, args.vaultAddress)
+  const connectionId = computeActionHash(
+    args.action,
+    args.nonce,
+    args.vaultAddress,
+    args.expiresAfter,
+  )
   const source = args.network === 'mainnet' ? 'a' : 'b'
   let sigHex: Hex
   try {
@@ -70,7 +76,12 @@ export async function signL1Action(args: SignL1ActionArgs): Promise<L1Signature>
  */
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
-export function computeActionHash(action: unknown, nonce: bigint, vaultAddress?: Address): Hex {
+export function computeActionHash(
+  action: unknown,
+  nonce: bigint,
+  vaultAddress?: Address,
+  expiresAfter?: bigint,
+): Hex {
   const actionBytes = msgpackEncode(action)
   const nonceBytes = bigintToBytesBE(nonce, 8)
   let payload: Uint8Array
@@ -82,6 +93,9 @@ export function computeActionHash(action: unknown, nonce: bigint, vaultAddress?:
     }
     const addrBytes = hexToBytes(vaultAddress.toLowerCase())
     payload = concatBytes(actionBytes, nonceBytes, Uint8Array.of(0x01), addrBytes)
+  }
+  if (expiresAfter !== undefined) {
+    payload = concatBytes(payload, Uint8Array.of(0x00), bigintToBytesBE(expiresAfter, 8))
   }
   return bytesToHex(keccak_256(payload))
 }

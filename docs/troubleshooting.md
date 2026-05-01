@@ -16,11 +16,24 @@ const kit = createUsdhKit({
 })
 ```
 
-### `BridgeTimeoutError: HyperCore did not credit within 30s`
+Browser apps that use an approved agent should also pass `accountAddress` so bridge ownership and balance reads stay tied to the master wallet:
 
-The EVM transfer succeeded but the HyperCore credit did not land within the polling window. Funds are safe — they are at the system address waiting for HL to index. Most bridges land in 5–15s; longer points to congestion or a relayer hiccup.
+```ts
+const kit = createUsdhKit({
+  network: 'mainnet',
+  signer: agentSigner,
+  accountAddress: account.address,
+  evmWallet: masterEvmWallet,
+})
+```
 
-Retry the bridge call with the same arguments. The kit re-checks the HC balance and resolves once the credit appears, even if from a previous tx. If the timeout came through `bridgeAndSwap()`, it will be available as `err.cause` on a `BridgeAndSwapError` with `phase === 'bridging'`.
+### `BridgeTimeoutError: HyperCore did not credit within 180s`
+
+The EVM bridge transaction succeeded but the HyperCore credit did not land within the polling window. Funds are safe — they are waiting for Hyperliquid/Circle bridge indexing. Most bridges land within roughly 1-2 minutes; longer points to congestion or a relayer hiccup.
+
+Refresh balances first. If the timeout came through `bridgeAndSwap()`, retry `bridgeAndSwap()` with the same arguments; route selection will use the now-credited HyperCore balance and continue to the swap when enough USDC is available. Do not blindly retry a low-level `bridgeToCore()` call unless you still intend to send another bridge deposit.
+
+When the timeout comes through `bridgeAndSwap()`, it is available as `err.cause` on a `BridgeAndSwapError` with `phase === 'bridging'`.
 
 ### `BridgeAndSwapError: bridgeAndSwap failed during bridging: ...`
 
@@ -74,6 +87,8 @@ const signer: Signer = {
 }
 ```
 
+If this happens in a browser wallet during `swap()`, do not fall back to direct wallet L1 order signing. Hyperliquid spot orders use the `Exchange` typed-data domain with chain ID `1337`; some wallets reject that while connected to HyperEVM. Use `approveAgent()` once with the master wallet, then create the kit with the approved agent as `signer` and the master wallet as `accountAddress`.
+
 ### `NetworkError: HL error: Order would immediately match resting order at worse than limit`
 
 The orderbook moved between quote and submission — your slippage tolerance was too tight. Widen `slippageBps` (the widget exposes 10/30/50/100 + custom) and retry. The kit passes through the protocol-level message so you can act on it.
@@ -85,6 +100,15 @@ You're swapping more than the resolved HC balance net of open orders. The widget
 ### `NotImplementedError: USDT swap lands in a follow-up PR`
 
 You called `swap({ from: 'USDT', ... })`. USDT support is deferred (USDT/USDC/USDH double-hop). Use USDC for now.
+
+### Why do I see two Rabby popups for a HyperEVM bridge?
+
+USDC on HyperEVM uses Circle's native bridge path:
+
+1. `approve` USDC to the CoreDepositWallet when allowance is not sufficient
+2. `deposit` the USDC into HyperCore spot
+
+The final USDH order is signed by the approved Hyperliquid agent session, so it should not open a third Rabby popup. A follow-up optimization can skip the approval transaction when existing allowance already covers the amount.
 
 ## Widget errors
 
@@ -132,4 +156,4 @@ Standard `prefers-color-scheme` tradeoff. See the cookie-based fix in [theming](
 
 ### Bundle size is too large
 
-The widget ships ~38KB ESM. The biggest dependency is the inlined `viem` types via `@usdh-kit/sdk`. If you're already using viem in your app, tree-shaking de-duplicates. If not, the widget pulls in viem.
+The widget currently ships around 55KB raw ESM before gzip. The browser agent-session flow and dual-token balance display are included; viem/wagmi remain peer dependencies. If your app already uses viem and wagmi, bundlers should de-duplicate them.

@@ -89,13 +89,16 @@ function routingBackend(
 ): {
   fetch: typeof fetch
   getExchangeBody: () => Record<string, unknown> | undefined
+  getInfoBodies: () => Record<string, unknown>[]
 } {
   let exchangeBody: Record<string, unknown> | undefined
+  const infoBodies: Record<string, unknown>[] = []
   let balanceIndex = 0
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
     const body = JSON.parse(init?.body as string) as Record<string, unknown>
     if (url.endsWith('/info')) {
+      infoBodies.push(body)
       if (body.type === 'spotMeta') return jsonResponse(sampleSpotMeta)
       if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
       if (body.type === 'spotClearinghouseState') {
@@ -115,7 +118,7 @@ function routingBackend(
     }
     throw new Error(`unexpected url: ${url}`)
   }) as unknown as typeof fetch
-  return { fetch, getExchangeBody: () => exchangeBody }
+  return { fetch, getExchangeBody: () => exchangeBody, getInfoBodies: () => infoBodies }
 }
 
 function stubEvmWallet(txHash = `0x${'c'.repeat(64)}`): EvmWallet & { calls: unknown[] } {
@@ -179,8 +182,9 @@ describe('swap', () => {
     )
   })
 
-  it('builds the order action with aggressive limit and submits a signed IOC', async () => {
-    // mid = 1.0; default slippage 20 bps -> limit 1.002
+  it('builds the order action with a Hyperliquid-valid spot price and submits a signed IOC', async () => {
+    // mid = 1.0; default slippage 20 bps -> internal limit 1.002,
+    // then spot tick rules for szDecimals=8 truncate the wire price to 1.
     const filledResponse = {
       status: 'ok',
       response: {
@@ -193,7 +197,7 @@ describe('swap', () => {
     const { fetch, getExchangeBody } = backend(filledResponse)
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
-    const result = await kit.swap({ from: 'USDC', amount: 1_000_000n })
+    const result = await kit.swap({ from: 'USDC', amount: 11_000_000n })
 
     const body = getExchangeBody()
     expect(body).toBeDefined()
@@ -204,14 +208,17 @@ describe('swap', () => {
         expect.objectContaining({
           a: 10000,
           b: true,
-          p: '1.002',
+          p: '1',
           r: false,
+          s: '11',
           t: { limit: { tif: 'Ioc' } },
         }),
       ],
     })
     expect(body?.signature).toMatchObject({ v: 28 })
     expect(typeof body?.nonce).toBe('number')
+    expect(typeof body?.expiresAfter).toBe('number')
+    expect(body?.expiresAfter as number).toBeGreaterThan(body?.nonce as number)
 
     expect(result.orderId).toBe('12345')
     expect(result.received).toBe(999_800n)
@@ -220,7 +227,7 @@ describe('swap', () => {
     expect('txHash' in result).toBe(false)
   })
 
-  it('respects per-call slippageBps in the limit price', async () => {
+  it('still applies Hyperliquid spot tick rules to per-call slippage limits', async () => {
     const filledResponse = {
       status: 'ok',
       response: {
@@ -233,12 +240,13 @@ describe('swap', () => {
     const { fetch, getExchangeBody } = backend(filledResponse)
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
-    await kit.swap({ from: 'USDC', amount: 1_000_000n, slippageBps: 100 })
+    await kit.swap({ from: 'USDC', amount: 11_000_000n, slippageBps: 100 })
 
     const body = getExchangeBody()
     const order = (body?.action as { orders: Array<{ p: string }> }).orders[0]
-    // mid = 1.0, slippage 100 bps -> limit = 1.01
-    expect(order?.p).toBe('1.01')
+    // mid = 1.0, slippage 100 bps -> internal limit 1.01,
+    // then szDecimals=8 allows zero fractional price digits.
+    expect(order?.p).toBe('1')
   })
 
   it('emits a monotonic nonce across concurrent calls', async () => {
@@ -262,8 +270,8 @@ describe('swap', () => {
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
     await Promise.all([
-      kit.swap({ from: 'USDC', amount: 1_000_000n }),
-      kit.swap({ from: 'USDC', amount: 1_000_000n }),
+      kit.swap({ from: 'USDC', amount: 11_000_000n }),
+      kit.swap({ from: 'USDC', amount: 11_000_000n }),
     ])
 
     expect(nonces.length).toBe(2)
@@ -273,7 +281,7 @@ describe('swap', () => {
   it('throws NetworkError when /exchange returns status err', async () => {
     const { fetch } = backend({ status: 'err', response: 'Insufficient margin' })
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
-    await expect(kit.swap({ from: 'USDC', amount: 1_000_000n })).rejects.toThrow(NetworkError)
+    await expect(kit.swap({ from: 'USDC', amount: 11_000_000n })).rejects.toThrow(NetworkError)
   })
 
   it('throws NetworkError when the order returns an error status', async () => {
@@ -282,7 +290,7 @@ describe('swap', () => {
       response: { type: 'order', data: { statuses: [{ error: 'Order missed' }] } },
     })
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
-    await expect(kit.swap({ from: 'USDC', amount: 1_000_000n })).rejects.toThrow(NetworkError)
+    await expect(kit.swap({ from: 'USDC', amount: 11_000_000n })).rejects.toThrow(NetworkError)
   })
 
   it('reports the realised slippage on the result without throwing', async () => {
@@ -295,8 +303,19 @@ describe('swap', () => {
       },
     })
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
-    const result = await kit.swap({ from: 'USDC', amount: 1_000_000n })
+    const result = await kit.swap({ from: 'USDC', amount: 11_000_000n })
     expect(result.slippageBps).toBe(5)
+  })
+
+  it('rejects swaps below Hyperliquid minimum order value before signing', async () => {
+    const signTypedData = vi.fn(stubSigner.signTypedData)
+    const kit = createUsdhKit({
+      network: 'mainnet',
+      signer: { ...stubSigner, signTypedData },
+    })
+
+    await expect(kit.swap({ from: 'USDC', amount: 10_000_000n })).rejects.toThrow(InvalidInputError)
+    expect(signTypedData).not.toHaveBeenCalled()
   })
 })
 
@@ -340,21 +359,21 @@ describe('getQuote', () => {
 
 describe('getRoute', () => {
   it('routes directly from HyperCore when HC balance covers amount plus buffers', async () => {
-    const { fetch } = routingBackend({}, ['2'])
+    const { fetch } = routingBackend({}, ['20'])
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch, slippageBps: 30 })
 
-    const route = await kit.getRoute({ from: 'USDC', amount: 1_000_000n })
+    const route = await kit.getRoute({ from: 'USDC', amount: 11_000_000n })
 
     expect(route.sourceChain).toBe('hypercore')
     expect(route.requiresBridge).toBe(false)
     expect(route.canSwap).toBe(true)
-    expect(route.hypercoreBalance).toBe(200_000_000n)
-    expect(route.hypercoreTotal).toBe(200_000_000n)
+    expect(route.hypercoreBalance).toBe(2_000_000_000n)
+    expect(route.hypercoreTotal).toBe(2_000_000_000n)
     expect(route.hypercoreHold).toBe(0n)
   })
 
   it('routes through HyperEVM when HC total covers but open-order hold leaves it short', async () => {
-    const { fetch } = routingBackend({}, [{ total: '2', hold: '1.5' }])
+    const { fetch } = routingBackend({}, [{ total: '20', hold: '15' }])
     const kit = createUsdhKit({
       network: 'mainnet',
       signer: stubSigner,
@@ -362,13 +381,13 @@ describe('getRoute', () => {
       fetch,
     })
 
-    const route = await kit.getRoute({ from: 'USDC', amount: 1_000_000n })
+    const route = await kit.getRoute({ from: 'USDC', amount: 11_000_000n })
 
     expect(route.sourceChain).toBe('hyperevm')
     expect(route.requiresBridge).toBe(true)
-    expect(route.hypercoreBalance).toBe(50_000_000n)
-    expect(route.hypercoreTotal).toBe(200_000_000n)
-    expect(route.hypercoreHold).toBe(150_000_000n)
+    expect(route.hypercoreBalance).toBe(500_000_000n)
+    expect(route.hypercoreTotal).toBe(2_000_000_000n)
+    expect(route.hypercoreHold).toBe(1_500_000_000n)
   })
 
   it("returns the user's HyperCore balance net of held funds", async () => {
@@ -385,6 +404,22 @@ describe('getRoute', () => {
       hold: 75_000_000n,
       available: 125_000_000n,
     })
+  })
+
+  it('queries HyperCore balances for accountAddress when signer is an agent', async () => {
+    const accountAddress = '0x00000000000000000000000000000000000000aa'
+    const { fetch, getInfoBodies } = routingBackend({}, ['2'])
+    const kit = createUsdhKit({
+      network: 'mainnet',
+      signer: stubSigner,
+      accountAddress,
+      fetch,
+    })
+
+    await kit.getHypercoreBalance({ asset: 'USDC' })
+
+    const stateBody = getInfoBodies().find((body) => body.type === 'spotClearinghouseState')
+    expect(stateBody?.user).toBe(accountAddress)
   })
 
   it('validates sourceChain at runtime', async () => {
@@ -410,7 +445,7 @@ describe('getRoute', () => {
       fetch,
     })
 
-    const route = await kit.getRoute({ from: 'USDC', amount: 1_000_000n })
+    const route = await kit.getRoute({ from: 'USDC', amount: 11_000_000n })
 
     expect(route.sourceChain).toBe('hyperevm')
     expect(route.requiresBridge).toBe(true)
@@ -422,7 +457,7 @@ describe('getRoute', () => {
     const { fetch } = routingBackend({}, ['0'])
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
-    const route = await kit.preflightSwap({ from: 'USDC', amount: 1_000_000n })
+    const route = await kit.preflightSwap({ from: 'USDC', amount: 11_000_000n })
 
     expect(route.requiresBridge).toBe(true)
     expect(route.canSwap).toBe(false)
@@ -435,7 +470,7 @@ describe('getRoute', () => {
 
     const route = await kit.getRoute({
       from: 'USDC',
-      amount: 1_000_000n,
+      amount: 11_000_000n,
       sourceChain: 'hypercore',
     })
 
@@ -443,6 +478,16 @@ describe('getRoute', () => {
     expect(route.requiresBridge).toBe(false)
     expect(route.canSwap).toBe(false)
     expect(route.blockReason).toBe('insufficient_hypercore_balance')
+  })
+
+  it('surfaces the Hyperliquid minimum order value before balance blockers', async () => {
+    const { fetch } = routingBackend({}, ['20'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    const route = await kit.getRoute({ from: 'USDC', amount: 10_000_000n })
+
+    expect(route.canSwap).toBe(false)
+    expect(route.blockReason).toBe('below_min_order_value')
   })
 })
 
@@ -456,19 +501,21 @@ describe('bridgeAndSwap', () => {
   }
 
   it('bridges from HyperEVM before swapping when the route requires a bridge', async () => {
-    const { fetch } = routingBackend(filledResponse, ['0', '0', '1'])
+    const { fetch } = routingBackend(filledResponse, ['0', '0', '11'])
     const evmWallet = stubEvmWallet(`0x${'d'.repeat(64)}`)
     const progress = vi.fn()
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, evmWallet, fetch })
 
     const result = await kit.bridgeAndSwap({
       from: 'USDC',
-      amount: 1_000_000n,
+      amount: 11_000_000n,
       waitForCreditTimeoutMs: 3_000,
       onProgress: progress,
     })
 
-    expect(evmWallet.calls).toHaveLength(1)
+    expect(evmWallet.calls).toHaveLength(2)
+    expect(evmWallet.calls[0]).toMatchObject({ to: '0xb88339cb7199b77e23db6e890353e22632ba630f' })
+    expect(evmWallet.calls[1]).toMatchObject({ to: '0x6b9e773128f453f5c2c60935ee2de2cbc5390a24' })
     expect(result.bridge?.txHash).toBe(`0x${'d'.repeat(64)}`)
     expect(result.swap.orderId).toBe('12345')
     expect(progress.mock.calls.map(([event]) => event.phase)).toEqual([
@@ -479,12 +526,41 @@ describe('bridgeAndSwap', () => {
     ])
   })
 
+  it('uses accountAddress for bridge ownership while the agent signs the order', async () => {
+    const accountAddress = '0x00000000000000000000000000000000000000aa'
+    const { fetch, getExchangeBody, getInfoBodies } = routingBackend(filledResponse, [
+      '0',
+      '0',
+      '11',
+    ])
+    const evmWallet = stubEvmWallet(`0x${'d'.repeat(64)}`)
+    const signTypedData = vi.fn(stubSigner.signTypedData)
+    const signer: Signer = { ...stubSigner, signTypedData }
+    const kit = createUsdhKit({ network: 'mainnet', signer, accountAddress, evmWallet, fetch })
+
+    await kit.bridgeAndSwap({
+      from: 'USDC',
+      amount: 11_000_000n,
+      waitForCreditTimeoutMs: 3_000,
+    })
+
+    expect(evmWallet.calls[0]).toMatchObject({ to: '0xb88339cb7199b77e23db6e890353e22632ba630f' })
+    expect(evmWallet.calls[1]).toMatchObject({ to: '0x6b9e773128f453f5c2c60935ee2de2cbc5390a24' })
+    expect(signTypedData).toHaveBeenCalledOnce()
+    expect(getExchangeBody()?.signature).toMatchObject({ v: 28 })
+    const stateUsers = getInfoBodies()
+      .filter((body) => body.type === 'spotClearinghouseState')
+      .map((body) => body.user)
+    expect(stateUsers).toContain(accountAddress)
+    expect(stateUsers).not.toContain(stubSigner.address)
+  })
+
   it('skips the bridge when HyperCore already covers the route', async () => {
-    const { fetch } = routingBackend(filledResponse, ['2'])
+    const { fetch } = routingBackend(filledResponse, ['20'])
     const evmWallet = stubEvmWallet()
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, evmWallet, fetch })
 
-    const result = await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+    const result = await kit.bridgeAndSwap({ from: 'USDC', amount: 11_000_000n })
 
     expect(evmWallet.calls).toHaveLength(0)
     expect(result.bridge).toBeUndefined()
@@ -493,11 +569,11 @@ describe('bridgeAndSwap', () => {
   })
 
   it('works when bridgeAndSwap is destructured from the kit object', async () => {
-    const { fetch } = routingBackend(filledResponse, ['2'])
+    const { fetch } = routingBackend(filledResponse, ['20'])
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
     const { bridgeAndSwap } = kit
 
-    const result = await bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+    const result = await bridgeAndSwap({ from: 'USDC', amount: 11_000_000n })
 
     expect(result.route.sourceChain).toBe('hypercore')
     expect(result.swap.orderId).toBe('12345')
@@ -507,7 +583,7 @@ describe('bridgeAndSwap', () => {
     const { fetch } = routingBackend(filledResponse, ['0'])
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
-    await expect(kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })).rejects.toThrow(
+    await expect(kit.bridgeAndSwap({ from: 'USDC', amount: 11_000_000n })).rejects.toThrow(
       MissingEvmWalletError,
     )
   })
@@ -517,7 +593,7 @@ describe('bridgeAndSwap', () => {
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
     await expect(
-      kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n, sourceChain: 'hypercore' }),
+      kit.bridgeAndSwap({ from: 'USDC', amount: 11_000_000n, sourceChain: 'hypercore' }),
     ).rejects.toThrow(InsufficientBalanceError)
   })
 
@@ -545,7 +621,7 @@ describe('bridgeAndSwap', () => {
 
     let thrown: unknown
     try {
-      await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+      await kit.bridgeAndSwap({ from: 'USDC', amount: 11_000_000n })
     } catch (err) {
       thrown = err
     }
@@ -570,7 +646,7 @@ describe('bridgeAndSwap', () => {
 
     let thrown: unknown
     try {
-      await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+      await kit.bridgeAndSwap({ from: 'USDC', amount: 11_000_000n })
     } catch (err) {
       thrown = err
     }
@@ -585,12 +661,12 @@ describe('bridgeAndSwap', () => {
   })
 
   it('wraps swap failures with lifecycle context', async () => {
-    const { fetch } = routingBackend({ status: 'err', response: 'Insufficient margin' }, ['2'])
+    const { fetch } = routingBackend({ status: 'err', response: 'Insufficient margin' }, ['20'])
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
     let thrown: unknown
     try {
-      await kit.bridgeAndSwap({ from: 'USDC', amount: 1_000_000n })
+      await kit.bridgeAndSwap({ from: 'USDC', amount: 11_000_000n })
     } catch (err) {
       thrown = err
     }

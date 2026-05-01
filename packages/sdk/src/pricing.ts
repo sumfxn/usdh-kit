@@ -41,6 +41,8 @@ export function midPrice18(book: L2Book): bigint {
 }
 
 const TEN_18 = 10n ** 18n
+const SPOT_MAX_PRICE_DECIMALS = 8
+const MAX_PRICE_SIG_FIGS = 5
 
 /**
  * Convert a source-token amount (in source's smallest unit) to the
@@ -84,5 +86,46 @@ export function formatDecimal(value: bigint, decimals: number, maxFracDigits?: n
     fracPart = fracPart.slice(0, maxFracDigits)
   }
   fracPart = fracPart.replace(/0+$/, '')
+  return fracPart === '' ? intPart : `${intPart}.${fracPart}`
+}
+
+/**
+ * Format a spot order price for Hyperliquid's wire rules:
+ * max 5 significant figures and max `8 - szDecimals` decimal places.
+ * Prices are truncated, not rounded up, so a buy limit never exceeds the
+ * caller's slippage-derived maximum.
+ */
+export function formatSpotPrice(value18: bigint, szDecimals: number): string {
+  if (value18 <= 0n) {
+    throw new InvalidInputError('price must be positive')
+  }
+  if (!Number.isInteger(szDecimals) || szDecimals < 0 || szDecimals > SPOT_MAX_PRICE_DECIMALS) {
+    throw new InvalidInputError('szDecimals must be an integer in [0, 8]')
+  }
+
+  const maxFracDigits = SPOT_MAX_PRICE_DECIMALS - szDecimals
+  const scale = 10n ** BigInt(18 - maxFracDigits)
+  const scaled = value18 / scale
+  if (scaled === 0n) {
+    throw new InvalidInputError('price is too small for Hyperliquid spot precision')
+  }
+
+  const fixed = scaled.toString().padStart(maxFracDigits + 1, '0')
+  const decimalIndex = fixed.length - maxFracDigits
+  const digits = fixed.split('')
+  const firstSig = digits.findIndex((digit) => digit !== '0')
+  if (firstSig === -1) {
+    throw new InvalidInputError('price is too small for Hyperliquid spot precision')
+  }
+  for (let i = firstSig + MAX_PRICE_SIG_FIGS; i < digits.length; i++) {
+    digits[i] = '0'
+  }
+
+  const intPart =
+    digits
+      .slice(0, decimalIndex)
+      .join('')
+      .replace(/^0+(?=\d)/, '') || '0'
+  const fracPart = digits.slice(decimalIndex).join('').replace(/0+$/, '')
   return fracPart === '' ? intPart : `${intPart}.${fracPart}`
 }

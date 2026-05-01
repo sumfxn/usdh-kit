@@ -8,7 +8,13 @@ import {
   NotImplementedError,
 } from './errors.js'
 import { type ResolvedPair, createPairResolver } from './pair-resolver.js'
-import { applyPriceInverse, formatDecimal, midPrice18, parseDecimal } from './pricing.js'
+import {
+  applyPriceInverse,
+  formatDecimal,
+  formatSpotPrice,
+  midPrice18,
+  parseDecimal,
+} from './pricing.js'
 import { signL1Action } from './signing.js'
 import {
   type ExchangeClient,
@@ -41,9 +47,11 @@ const DEFAULT_SLIPPAGE_BPS = 20
 const QUOTE_TTL_MS = 30_000
 const STABLE_DECIMALS = 6
 const PRICE_DECIMALS = 18
+const MIN_ORDER_SOURCE_AMOUNT = 10_000_001n
 const TEN_PRICE = 10n ** BigInt(PRICE_DECIMALS)
 const HC_FEE_BUFFER_BPS = 10n
 const BPS_DENOMINATOR = 10_000n
+const ORDER_EXPIRES_AFTER_MS = 30_000n
 
 export interface UsdhKit {
   readonly network: KitConfig['network']
@@ -65,9 +73,10 @@ export interface UsdhKit {
    */
   bridgeAndSwap(input: BridgeAndSwapInput): Promise<BridgeAndSwapResult>
   /**
-   * Bridge a stable from HyperEVM to HyperCore by sending the asset's ERC20
-   * to its HyperCore system address. Resolves once HyperCore credits the
-   * deposit (poll, default timeout 30s). Requires `KitConfig.evmWallet`.
+   * Bridge a stable from HyperEVM to HyperCore. USDC uses Circle's native
+   * CoreDepositWallet flow; other linked spot assets use the system-address
+   * transfer path. Resolves once HyperCore credits the deposit (poll, default
+   * timeout 180s). Requires `KitConfig.evmWallet`.
    */
   bridgeToCore(input: BridgeInput): Promise<BridgeResult>
 }
@@ -80,6 +89,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
   validateConfig(config)
   const defaultSlippageBps = config.slippageBps ?? DEFAULT_SLIPPAGE_BPS
   const logger = config.logger ?? silentLogger
+  const accountAddress = normalizeAddress(config.accountAddress ?? config.signer.address)
   const info: InfoClient = createInfoClient({
     network: config.network,
     ...(config.fetch !== undefined && { fetch: config.fetch }),
@@ -106,6 +116,9 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     if (input.from === 'USDT') {
       throw new NotImplementedError('USDT swap lands in a follow-up PR')
     }
+    if (input.amount < MIN_ORDER_SOURCE_AMOUNT) {
+      throw new InvalidInputError('amount must be greater than 10 USDC for Hyperliquid spot orders')
+    }
     logger.debug('swap.requested', {
       from: input.from,
       amount: input.amount.toString(),
@@ -117,8 +130,9 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     const mid = midPrice18(book)
 
     const limitPrice18 = (mid * (10_000n + BigInt(slippageBps))) / 10_000n
-    const limitPriceStr = formatDecimal(limitPrice18, PRICE_DECIMALS, pair.quoteWeiDecimals)
-    const sizeUsdh = applyPriceInverse(input.amount, limitPrice18)
+    const limitPriceStr = formatSpotPrice(limitPrice18, pair.baseSzDecimals)
+    const wireLimitPrice18 = parseDecimal(limitPriceStr, PRICE_DECIMALS)
+    const sizeUsdh = applyPriceInverse(input.amount, wireLimitPrice18)
     if (sizeUsdh === 0n) {
       throw new InvalidInputError('amount too small to fill at the slippage-tolerant limit')
     }
@@ -126,6 +140,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     const action = buildOrderAction(pair, limitPriceStr, sizeStr)
     const nonce = nextNonce()
+    const expiresAfter = nonce + ORDER_EXPIRES_AFTER_MS
 
     logger.debug('swap.signing', { pair: pair.name, nonce: nonce.toString() })
     const signature = await signL1Action({
@@ -133,10 +148,16 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       action,
       nonce,
       network: config.network,
+      expiresAfter,
     })
 
     logger.debug('swap.submitting', { pair: pair.name })
-    const response: ExchangeResponse = await exchange.submit({ action, signature, nonce })
+    const response: ExchangeResponse = await exchange.submit({
+      action,
+      signature,
+      nonce,
+      expiresAfter,
+    })
     if (response.status === 'err') {
       throw new NetworkError(`exchange error: ${response.response}`)
     }
@@ -163,13 +184,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       if (!token) {
         throw new NetworkError(`${input.asset} token not found in spotMeta`)
       }
-      return readHypercoreBalance(
-        info,
-        config.signer.address,
-        input.asset,
-        token.index,
-        token.weiDecimals,
-      )
+      return readHypercoreBalance(info, accountAddress, input.asset, token.index, token.weiDecimals)
     },
 
     async getRoute(input: RouteInput): Promise<SwapRoute> {
@@ -209,7 +224,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
             {
               asset: input.from,
               amount: input.amount,
-              user: config.signer.address,
+              user: accountAddress,
               ...(input.waitForCreditTimeoutMs !== undefined && {
                 waitForCreditTimeoutMs: input.waitForCreditTimeoutMs,
               }),
@@ -244,7 +259,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     async bridgeToCore(input: BridgeInput): Promise<BridgeResult> {
       return runBridgeToCore(
-        { ...input, user: config.signer.address },
+        { ...input, user: accountAddress },
         {
           info,
           evmWallet: config.evmWallet,
@@ -283,6 +298,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     }
 
     const slippageBps = input.slippageBps ?? defaultSlippageBps
+    const belowMinOrderValue = input.amount < MIN_ORDER_SOURCE_AMOUNT
     const pair = await resolvePair()
     const book = await info.l2Book(pair.name)
     const midPrice = midPrice18(book)
@@ -295,7 +311,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     const hypercore = await readHypercoreBalance(
       info,
-      config.signer.address,
+      accountAddress,
       input.from,
       pair.tokens[1],
       pair.quoteWeiDecimals,
@@ -313,7 +329,8 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     const sourceChain: SourceChain =
       requestedSource === 'auto' ? (hypercoreCovers ? 'hypercore' : 'hyperevm') : requestedSource
     const requiresBridge = sourceChain === 'hyperevm'
-    const canSwap = requiresBridge ? config.evmWallet !== undefined : hypercoreCovers
+    const canSwap =
+      !belowMinOrderValue && (requiresBridge ? config.evmWallet !== undefined : hypercoreCovers)
 
     return {
       from: input.from,
@@ -322,9 +339,11 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       requiresBridge,
       canSwap,
       ...(!canSwap &&
-        (requiresBridge
-          ? { blockReason: 'missing_evm_wallet' as const }
-          : { blockReason: 'insufficient_hypercore_balance' as const })),
+        (belowMinOrderValue
+          ? { blockReason: 'below_min_order_value' as const }
+          : requiresBridge
+            ? { blockReason: 'missing_evm_wallet' as const }
+            : { blockReason: 'insufficient_hypercore_balance' as const })),
       quote,
       hypercoreBalance,
       hypercoreTotal: hypercore.total,
@@ -410,9 +429,21 @@ function validateConfig(config: KitConfig): void {
   if (config.signer === undefined || config.signer === null) {
     throw new InvalidInputError('signer is required')
   }
+  if (config.accountAddress !== undefined) {
+    normalizeAddress(config.accountAddress)
+  }
   if (config.slippageBps !== undefined) {
     assertSlippage(config.slippageBps)
   }
+}
+
+const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
+
+function normalizeAddress(address: KitConfig['signer']['address']): KitConfig['signer']['address'] {
+  if (!ADDRESS_PATTERN.test(address)) {
+    throw new InvalidInputError(`address is not a 20-byte hex address: ${address}`)
+  }
+  return address.toLowerCase() as KitConfig['signer']['address']
 }
 
 function validateSwapInput(input: SwapInput): void {

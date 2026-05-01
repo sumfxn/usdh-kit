@@ -10,12 +10,12 @@ import { describe, expect, it } from 'vitest'
  * over-the-wire size to end users is gzipped and roughly 30 to 35 % of
  * this number.
  *
- * Current actual: ~38 KB ESM. Budget set 30 % above to leave room for
- * V1.5 features (reverse direction, multi-chain source) without forcing
- * a knee-jerk widget refactor. Tighten this if the bundle bloats from
- * dependency creep rather than feature work.
+ * Current actual: ~55.1 KB ESM after the browser agent-session flow, native
+ * USDC bridge support, and dual-token balance display. Budget leaves a small
+ * cushion while still catching dependency creep; viem/accounts remains
+ * external and is not bundled into the widget.
  */
-const BUDGET_KB = 50
+const BUDGET_KB = 56
 
 describe('widget bundle size', () => {
   it('ESM bundle stays under budget', () => {

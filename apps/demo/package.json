@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @usdh-kit/widget build:css && next dev -p 3000",
-    "build": "next build",
+    "dev": "next dev -p 3000",
+    "build": "next build && node scripts/assert-widget-css.mjs",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit"
   },

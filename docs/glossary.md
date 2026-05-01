@@ -8,9 +8,9 @@ Hyperliquid-specific terms used across `@usdh-kit/sdk` and `@usdh-kit/widget`.
 
 **HyperCore** — non-EVM matching engine that runs the spot order book. USDC needs to be on HyperCore (not HyperEVM) before a spot trade can fill.
 
-**System address** — the deterministic ERC-20 receiver per HL token used to bridge from HyperEVM to HyperCore. USDC's system address is `0x2000…0000`. Sending the token to this address triggers a HyperCore credit on the same wallet.
+**System address** — the deterministic ERC-20 receiver per HL token used by linked HyperEVM assets to bridge from HyperEVM to HyperCore. USDC is special: native Circle USDC uses the CoreDepositWallet (`approve` + `deposit`) rather than a direct system-address transfer.
 
-**Bridge polling** — `bridgeToCore` submits the EVM transfer, then polls `spotClearinghouseState` until the credit lands (default timeout 30s). The kit returns once the credit is confirmed; no extra signing needed.
+**Bridge polling** — `bridgeToCore` submits the EVM bridge transaction, then polls `spotClearinghouseState` until the credit lands (default timeout 180s). The kit returns once the credit is confirmed; no extra HyperCore signing needed.
 
 ## Trading
 
@@ -22,7 +22,7 @@ Hyperliquid-specific terms used across `@usdh-kit/sdk` and `@usdh-kit/widget`.
 
 **Slippage (bps)** — basis points (1 bp = 0.01%). The widget exposes 10 / 30 / 50 / 100 bps presets plus a custom field. The realised slippage (`SwapResult.slippageBps`) is the absolute difference between fill price and mid, rescaled to bps.
 
-**weiDecimals / evmExtraWeiDecimals** — Hyperliquid's two-decimal-systems quirk. Tokens have a HyperCore native precision (`weiDecimals`) and an optional offset on HyperEVM (`evmExtraWeiDecimals`). USDC: `weiDecimals=8` on HC, `evmExtraWeiDecimals=10` on EVM (so EVM USDC has 18 effective decimals, HC has 8). The SDK abstracts this; consumers reading `spotMeta` directly need to handle it.
+**weiDecimals / evmExtraWeiDecimals** — Hyperliquid's two-decimal-systems quirk. Tokens have a HyperCore native precision (`weiDecimals`) and an optional offset on HyperEVM (`evmExtraWeiDecimals`). USDC: `weiDecimals=8` on HC, `evmExtraWeiDecimals=-2` for the linked CoreDepositWallet metadata (native EVM USDC has 6 decimals). The SDK abstracts this; consumers reading `spotMeta` directly need to handle it.
 
 ## Stablecoins
 
@@ -37,3 +37,9 @@ Hyperliquid-specific terms used across `@usdh-kit/sdk` and `@usdh-kit/widget`.
 **Signer** — wallet-agnostic typed-data + message signing interface. Works with viem, ethers, Privy, Turnkey, raw private key. Required for `swap()`.
 
 **EvmWallet** — minimal interface to send EVM transactions (`{ address, sendTransaction }`). Required for `bridgeToCore()`. Distinct from `Signer` because some wallet stacks separate signing and broadcasting.
+
+**Master wallet** — the user's real account. The SDK uses this address for balances, routing, and bridge ownership when `accountAddress` is provided.
+
+**Agent wallet** — a Hyperliquid API wallet approved by the master wallet. It signs L1 trading actions such as the USDH spot order, while the master wallet keeps custody and still signs HyperEVM bridge transactions.
+
+**Trading session** — the widget's short-lived browser agent. It is stored in `sessionStorage`, scoped to account + network, and avoids asking browser wallets to sign Hyperliquid `Exchange` domain orders directly.

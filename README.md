@@ -1,11 +1,6 @@
 # usdh-kit
 
 [![CI](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/sumfxn/usdh-kit/actions/workflows/ci.yml)
-[![Built for Hyperliquid](https://img.shields.io/badge/built%20for-Hyperliquid-000000?style=flat)](https://hyperliquid.xyz)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-000000?style=flat&logo=typescript&logoColor=white)](./tsconfig.base.json)
-[![Node](https://img.shields.io/badge/node-%3E%3D18.18-000000?style=flat&logo=nodedotjs&logoColor=white)](./package.json)
-[![Last commit](https://img.shields.io/github/last-commit/sumfxn/usdh-kit?style=flat&color=000000)](https://github.com/sumfxn/usdh-kit/commits/main)
-[![Issues](https://img.shields.io/github/issues/sumfxn/usdh-kit?style=flat&color=000000)](https://github.com/sumfxn/usdh-kit/issues)
 [![License](https://img.shields.io/badge/License-MIT-000000.svg)](./LICENSE)
 
 ![usdh-kit banner](./docs/assets/usdh-banner.svg)
@@ -13,7 +8,7 @@
 <!--
   npm-dependent badges, intentionally commented until @usdh-kit/sdk and
   @usdh-kit/widget are published. Uncomment as part of the first npm
-  publish PR (gated on testnet IRL session per the project roadmap).
+  publish PR.
 
   [![@usdh-kit/sdk](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000&label=%40usdh-kit%2Fsdk)](https://www.npmjs.com/package/@usdh-kit/sdk)
   [![@usdh-kit/widget](https://img.shields.io/npm/v/@usdh-kit/widget?style=flat&color=000000&label=%40usdh-kit%2Fwidget)](https://www.npmjs.com/package/@usdh-kit/widget)
@@ -42,7 +37,8 @@ What works today:
 - `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 - `getRoute()` / `preflightSwap()` to choose direct HyperCore swap vs HyperEVM bridge
 - `bridgeAndSwap()` for the common route → bridge → swap retail flow
-- React widget with built-in source-chain selection (HyperEVM bridge or direct HyperCore swap), friendly errors, and full theming via CSS variables
+- Hyperliquid agent-wallet support for browser-safe L1 order signing
+- React widget with built-in source-chain selection (HyperEVM bridge or direct HyperCore swap), short-lived trading sessions, friendly errors, and full theming via CSS variables
 
 Deferred to follow-up PRs:
 
@@ -65,26 +61,43 @@ pnpm add @usdh-kit/widget @usdh-kit/sdk wagmi viem @tanstack/react-query react r
 ## SDK quickstart
 
 ```ts
-import { createUsdhKit } from '@usdh-kit/sdk'
+import { approveAgent, createUsdhKit } from '@usdh-kit/sdk'
 
-const kit = createUsdhKit({ network: 'mainnet', signer, evmWallet, slippageBps: 30 })
+// Browser apps should use an approved Hyperliquid agent wallet for L1 orders.
+await approveAgent({
+  network: 'mainnet',
+  signer: masterWalletSigner,
+  agentAddress: agentSigner.address,
+  agentName: 'my-app-usdh',
+  signatureChainId: 999,
+})
+
+const kit = createUsdhKit({
+  network: 'mainnet',
+  signer: agentSigner,
+  accountAddress: masterWalletSigner.address,
+  evmWallet,
+  slippageBps: 30,
+})
 
 // quote
-const quote = await kit.getQuote({ from: 'USDC', amount: 1_000_000n })
+const amount = 11_000_000n // 11 USDC; Hyperliquid spot orders must be >10 USDC
+
+const quote = await kit.getQuote({ from: 'USDC', amount })
 console.log(`would receive ~${quote.estimatedReceived} USDH`)
 
 // move USDC from HyperEVM to HyperCore (skip if already on HC)
-const bridge = await kit.bridgeToCore({ asset: 'USDC', amount: 1_000_000n })
+const bridge = await kit.bridgeToCore({ asset: 'USDC', amount })
 
 // swap on HyperCore via IOC limit at mid + slippageBps
-const result = await kit.swap({ from: 'USDC', amount: 1_000_000n })
+const result = await kit.swap({ from: 'USDC', amount })
 console.log(`got ${result.received} USDH for ${result.spent} USDC`)
 console.log(`realised slippage: ${result.slippageBps}bps`)
 
 // or let the SDK route, bridge if needed, then swap
 const routed = await kit.bridgeAndSwap({
   from: 'USDC',
-  amount: 1_000_000n,
+  amount,
   onProgress: (event) => console.log(event.phase),
 })
 console.log(`route: ${routed.route.sourceChain}`)
@@ -111,6 +124,8 @@ export default function Page() {
 
 The widget defaults to `theme="auto"` (follows the user's system). Force a palette with `<USDHSwap network="mainnet" theme="dark" />` or `<USDHSwap network="mainnet" theme="light" />`. Override any colour token from your own stylesheet — see [docs/theming.md](./docs/theming.md).
 
+On first use, the widget asks the connected wallet to approve a short-lived Hyperliquid trading session. That agent signs only the HyperCore USDH order. If the route starts on HyperEVM, the connected wallet still submits the USDC approval/deposit transactions required for the Circle bridge.
+
 <img src="./docs/assets/widget-dark.png" alt="USDH swap widget dark mode" width="480" />
 
 ## Use cases
@@ -128,6 +143,7 @@ A few real flows the SDK is shaped for today. Runnable examples are still on the
 - HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
 - HyperCore balance, route/preflight helpers plus `bridgeAndSwap()` orchestration
 - Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
+- Approved Hyperliquid agent wallet flow for browser apps (`approveAgent`, `accountAddress`)
 - Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book) for consumers building custom UIs
 - Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` for orchestration failures
 - `friendlyError()` helper to map SDK errors to short, copy-safe strings
@@ -138,6 +154,8 @@ A few real flows the SDK is shaped for today. Runnable examples are still on the
 ## Docs
 
 - [docs/architecture.md](./docs/architecture.md) — what the SDK does under the hood, in the order it does it (msgpack, signing, bridge polling, error model).
+- [docs/agent-wallets.md](./docs/agent-wallets.md) — secure signing patterns for builders: backend agent, browser trading session, externally managed signer.
+- [docs/bridge-and-swap.md](./docs/bridge-and-swap.md) — the full USDC HyperEVM → USDH HyperCore flow, including wallet prompts and recovery.
 - [docs/glossary.md](./docs/glossary.md) — Hyperliquid terms used across the SDK and widget (HyperEVM vs HyperCore, IOC, system address, weiDecimals, …).
 - [docs/theming.md](./docs/theming.md) — widget CSS variable list, override patterns, SSR-flash mitigation, Tailwind setup.
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — common errors with concrete fixes (`MissingEvmWalletError`, `BridgeTimeoutError`, "borders render bright white", …).

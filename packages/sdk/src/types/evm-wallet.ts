@@ -18,8 +18,9 @@ export interface EvmTransactionRequest {
  * Turnkey, or any custodial provider.
  *
  * `sendTransaction` MUST broadcast the transaction and resolve with its hash.
- * Inclusion-aware adapters are preferred but not required; the kit polls the
- * HyperCore credit independently and tolerates pre-inclusion resolution.
+ * For flows that submit dependent transactions (such as USDC approve + deposit),
+ * provide `waitForTransactionReceipt` so the kit can wait for inclusion between
+ * steps.
  *
  * @example viem adapter
  * ```ts
@@ -28,10 +29,12 @@ export interface EvmTransactionRequest {
  * const evmWallet: EvmWallet = {
  *   address: account.address,
  *   sendTransaction: (req) => wc.sendTransaction({ to: req.to, data: req.data }),
+ *   waitForTransactionReceipt: (hash) => publicClient.waitForTransactionReceipt({ hash }).then(() => {}),
  * }
  * ```
  */
 export interface EvmWallet {
   readonly address: Address
   sendTransaction(req: EvmTransactionRequest): Promise<Hex>
+  waitForTransactionReceipt?(txHash: Hex, chainId?: number): Promise<void>
 }

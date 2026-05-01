@@ -39,11 +39,12 @@ pnpm add @usdh-kit/sdk
 import { BridgeTimeoutError, createUsdhKit, isBridgeAndSwapError } from '@usdh-kit/sdk'
 
 const kit = createUsdhKit({ network: 'mainnet', signer, evmWallet, slippageBps: 30 })
+const amount = 11_000_000n // 11 USDC; Hyperliquid spot orders must be >10 USDC
 
 try {
   const result = await kit.bridgeAndSwap({
     from: 'USDC',
-    amount: 1_000_000n,
+    amount,
     onProgress: (event) => console.log(event.phase),
   })
 
@@ -64,12 +65,42 @@ slippage is enforced pre-fill by Hyperliquid's matcher). The returned
 `result.slippageBps` is the realised slippage versus mid; tighten the tolerance
 and retry if it's higher than you expected.
 
+## Agent wallets
+
+Browser wallets can reject Hyperliquid L1 order signatures because orders use Hyperliquid's `Exchange` typed-data domain (`chainId: 1337`), not the connected HyperEVM chain. The recommended production pattern is a Hyperliquid API/agent wallet:
+
+* the master wallet approves the agent once with `approveAgent()`
+* the agent signs L1 trading actions
+* reads, routing, balances, and bridge ownership still use the master account via `accountAddress`
+
+```ts
+import { approveAgent, createUsdhKit } from '@usdh-kit/sdk'
+
+await approveAgent({
+  network: 'mainnet',
+  signer: masterWalletSigner,
+  agentAddress: agentSigner.address,
+  agentName: 'my-app-usdh',
+  signatureChainId: 999, // match the connected HyperEVM chain for browser wallets
+})
+
+const kit = createUsdhKit({
+  network: 'mainnet',
+  signer: agentSigner,
+  accountAddress: masterWalletSigner.address,
+  evmWallet: masterEvmWallet,
+  slippageBps: 30,
+})
+```
+
+Backend and bot builders can provide an already-approved agent signer from a private key or key-management system. Frontend builders should keep any generated browser agent short-lived, scoped to the current account/network, and avoid logging private keys, raw signatures, or full typed-data payloads.
+
 ## Quote a swap
 
 `getQuote()` returns a mid-price snapshot with a 30-second validity window.
 
 ```ts
-const quote = await kit.getQuote({ from: 'USDC', amount: 1_000_000n })
+const quote = await kit.getQuote({ from: 'USDC', amount: 11_000_000n })
 if (Date.now() < quote.validUntil) {
   console.log(`mid-price on ${quote.pair}: ${quote.midPrice}`)
   console.log(`would receive ~${quote.estimatedReceived} USDH`)
@@ -84,7 +115,7 @@ if (Date.now() < quote.validUntil) {
 const balance = await kit.getHypercoreBalance({ asset: 'USDC' })
 console.log(`spendable HC USDC: ${balance.available}`)
 
-const route = await kit.preflightSwap({ from: 'USDC', amount: 1_000_000n })
+const route = await kit.preflightSwap({ from: 'USDC', amount: 11_000_000n })
 
 if (!route.canSwap) {
   console.log(route.blockReason)
@@ -112,7 +143,7 @@ It returns both legs when a bridge happened and emits progress events that can d
 ```ts
 const result = await kit.bridgeAndSwap({
   from: 'USDC',
-  amount: 1_000_000n,
+  amount: 11_000_000n,
   onProgress: (event) => {
     if (event.phase === 'bridging') showBridgeSpinner()
     if (event.phase === 'swapping') showSwapSpinner()
