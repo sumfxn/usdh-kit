@@ -51,7 +51,6 @@ function stubInfo(states: SpotClearinghouseState[]): InfoClient {
   let i = 0
   return {
     spotMeta: vi.fn(async () => sampleSpotMeta),
-    outcomeMeta: vi.fn(),
     l2Book: vi.fn(),
     spotClearinghouseState: vi.fn(async () => {
       const s = states[Math.min(i, states.length - 1)]
@@ -194,7 +193,6 @@ describe('runBridgeToCore', () => {
     }
     const info: InfoClient = {
       spotMeta: vi.fn(async () => meta),
-      outcomeMeta: vi.fn(),
       l2Book: vi.fn(),
       spotClearinghouseState: vi.fn(),
     }
@@ -384,7 +382,6 @@ describe('runBridgeToCore', () => {
     let calls = 0
     const info: InfoClient = {
       spotMeta: vi.fn(async () => sampleSpotMeta),
-      outcomeMeta: vi.fn(),
       l2Book: vi.fn(),
       spotClearinghouseState: vi.fn(async () => {
         calls += 1

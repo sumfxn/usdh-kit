@@ -141,26 +141,7 @@ The widget's `friendlyError(err)` helper maps these to short copy-safe strings (
 
 ## Transport
 
-`InfoClient` (`createInfoClient`) is exposed as a public export so consumers can build read-only UIs without re-implementing the wire format. Methods include `spotMeta()`, `outcomeMeta()`, `spotClearinghouseState(user)`, `l2Book(coin)`. Server-friendly (works on Node, Bun, edge, browser).
-
-## Outcome market reads
-
-HIP-4 outcome support is intentionally read-only. `outcomeMeta()` returns active
-binary outcome metadata, and the SDK derives each side's Hyperliquid
-representations from the documented encoding:
-
-```
-encoding = 10 * outcome + side
-book coin = #<encoding>
-balance token = +<encoding>
-asset id = 100_000_000 + encoding
-```
-
-`kit.listOutcomeMarkets()` normalizes `outcomeMeta` into side records with
-`coin`, `tokenName`, and `assetId`. `kit.getOutcomeBook()` calls `l2Book()` for
-the encoded side coin. There is no write path yet, and the SDK does not infer a
-USDH quote/settlement asset from outcome metadata until that shape is validated
-against live/testnet markets.
+`InfoClient` (`createInfoClient`) is exposed as a public export so consumers can build read-only UIs without re-implementing the wire format. Methods include `spotMeta()`, `spotClearinghouseState(user)`, `l2Book(coin)`. Server-friendly (works on Node, Bun, edge, browser).
 
 `ExchangeClient` is internal — consumers should call `kit.swap()` rather than building actions themselves.
 

@@ -11,7 +11,7 @@ import {
   createUsdhKit,
   isBridgeAndSwapError,
 } from '../src/index.js'
-import type { L2Book, OutcomeMeta, SpotMeta } from '../src/transport/types.js'
+import type { L2Book, SpotMeta } from '../src/transport/types.js'
 import type { EvmWallet } from '../src/types/evm-wallet.js'
 
 const stubSigner: Signer = {
@@ -52,18 +52,6 @@ const sampleL2Book: L2Book = {
   levels: [[{ px: '0.9998', sz: '10000', n: 1 }], [{ px: '1.0002', sz: '10000', n: 1 }]],
 }
 
-const sampleOutcomeMeta: OutcomeMeta = {
-  outcomes: [
-    {
-      outcome: 123,
-      name: 'Recurring',
-      description: 'class:priceBinary|underlying:HYPE|expiry:20260310-1100|targetPrice:34.5',
-      sideSpecs: [{ name: 'Yes' }, { name: 'No' }],
-    },
-  ],
-  questions: [],
-}
-
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -81,7 +69,6 @@ function backend(exchangeResponse: unknown): {
     const body = JSON.parse(init?.body as string) as Record<string, unknown>
     if (url.endsWith('/info')) {
       if (body.type === 'spotMeta') return jsonResponse(sampleSpotMeta)
-      if (body.type === 'outcomeMeta') return jsonResponse(sampleOutcomeMeta)
       if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
       throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
     }
@@ -113,7 +100,6 @@ function routingBackend(
     if (url.endsWith('/info')) {
       infoBodies.push(body)
       if (body.type === 'spotMeta') return jsonResponse(sampleSpotMeta)
-      if (body.type === 'outcomeMeta') return jsonResponse(sampleOutcomeMeta)
       if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
       if (body.type === 'spotClearinghouseState') {
         const fixture = hcBalances[Math.min(balanceIndex, hcBalances.length - 1)] ?? '0'
@@ -174,35 +160,6 @@ describe('createUsdhKit', () => {
     expect(() =>
       createUsdhKit({ network: 'mainnet', signer: stubSigner, slippageBps: 10_001 }),
     ).toThrow(InvalidInputError)
-  })
-})
-
-describe('outcome market reads', () => {
-  it('lists HIP-4 outcome markets through the kit', async () => {
-    const { fetch } = backend({ status: 'ok', response: { type: 'noop' } })
-    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
-
-    await expect(kit.listOutcomeMarkets()).resolves.toEqual([
-      expect.objectContaining({
-        outcome: 123,
-        name: 'Recurring',
-        sides: [
-          expect.objectContaining({ side: 0, coin: '#1230' }),
-          expect.objectContaining({ side: 1, coin: '#1231' }),
-        ],
-      }),
-    ])
-  })
-
-  it('fetches an outcome side book through the kit', async () => {
-    const { fetch } = backend({ status: 'ok', response: { type: 'noop' } })
-    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
-
-    const book = await kit.getOutcomeBook({ outcome: 123, side: 0, nSigFigs: 5 })
-
-    expect(book).toEqual(sampleL2Book)
-    const bodies = vi.mocked(fetch).mock.calls.map(([, init]) => JSON.parse(init?.body as string))
-    expect(bodies).toEqual([{ type: 'l2Book', coin: '#1230', nSigFigs: 5 }])
   })
 })
 
