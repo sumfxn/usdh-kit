@@ -24,6 +24,8 @@ export interface InfoClient {
   spotMeta(): Promise<SpotMeta>
   l2Book(coin: string, nSigFigs?: NSigFigs): Promise<L2Book>
   spotClearinghouseState(user: Address): Promise<SpotClearinghouseState>
+  /** Returns mid prices keyed by coin name (perps) or `@<spotIndex>` (spot). */
+  allMids(): Promise<Record<string, string>>
 }
 
 export function createInfoClient(config: InfoClientConfig): InfoClient {
@@ -93,6 +95,9 @@ export function createInfoClient(config: InfoClientConfig): InfoClient {
     },
     spotClearinghouseState(user) {
       return post<SpotClearinghouseState>({ type: 'spotClearinghouseState', user })
+    },
+    allMids() {
+      return post<Record<string, string>>({ type: 'allMids' })
     },
   }
 }

@@ -118,6 +118,17 @@ describe('l2Book', () => {
   })
 })
 
+describe('allMids', () => {
+  it('posts an allMids body and returns the parsed map', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ BTC: '60000', '@0': '1.0001' }))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    const result = await client.allMids()
+    const [, init] = fetch.mock.calls[0] ?? []
+    expect(JSON.parse(init?.body as string)).toEqual({ type: 'allMids' })
+    expect(result).toEqual({ BTC: '60000', '@0': '1.0001' })
+  })
+})
+
 describe('error handling', () => {
   it('wraps non-2xx HTTP status in NetworkError', async () => {
     const fetch = vi.fn(async () => new Response('rate limited', { status: 429 }))
