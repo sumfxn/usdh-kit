@@ -37,7 +37,6 @@ What works today:
 - `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 - `getRoute()` / `preflightSwap()` to choose direct HyperCore swap vs HyperEVM bridge
 - `bridgeAndSwap()` for the common route → bridge → swap retail flow
-- Experimental read-only HIP-4 outcome discovery (`outcomeMeta`, encoded side books)
 - Hyperliquid agent-wallet support for browser-safe L1 order signing
 - React widget with built-in source-chain selection (HyperEVM bridge or direct HyperCore swap), short-lived trading sessions, friendly errors, and full theming via CSS variables
 
@@ -146,7 +145,6 @@ A few real flows the SDK is shaped for today. Runnable examples are still on the
 - Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 - Approved Hyperliquid agent wallet flow for browser apps (`approveAgent`, `accountAddress`)
 - Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book) for consumers building custom UIs
-- Experimental read-only outcome helpers (`listOutcomeMarkets`, `getOutcomeMarket`, `getOutcomeBook`)
 - Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` for orchestration failures
 - `friendlyError()` helper to map SDK errors to short, copy-safe strings
 - React widget (`@usdh-kit/widget`) with light, dark and auto theming (WCAG AA defaults, CSS variables for integrator overrides)

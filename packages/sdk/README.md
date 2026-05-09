@@ -23,8 +23,7 @@ What works today:
 * `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 * `getRoute()` / `preflightSwap()` for HyperCore-vs-HyperEVM source selection
 * `bridgeAndSwap()` for route → optional bridge → swap orchestration
-* Read-only `InfoClient` (spotMeta, outcomeMeta, spotClearinghouseState, L2 book)
-* Experimental read-only HIP-4 outcome discovery and encoded side books
+* Read-only `InfoClient` (spotMeta, spotClearinghouseState, L2 book)
 
 Deferred to follow-up PRs: USDT pricing/swap, reverse direction (USDH → USDC), multi-chain source.
 
@@ -158,25 +157,6 @@ console.log(result.swap.orderId)
 
 Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. Use `isBridgeAndSwapError(err)` to narrow the type, then inspect `phase`, `route`, optional `bridge`, and `cause` so apps can show accurate recovery copy without parsing strings. If `cause` is `BridgeTimeoutError`, the EVM transfer was sent and you can show `cause.txHash` while waiting/retrying for HyperCore credit. Preflight blockers still throw their specific errors (`MissingEvmWalletError`, `InsufficientBalanceError`).
 
-## Outcome markets
-
-HIP-4 outcome support is read-only and experimental. Hyperliquid exposes active
-outcome metadata through `outcomeMeta`; each binary side is addressed by an
-encoded coin (`#<10 * outcome + side>`) for book reads.
-
-```ts
-const markets = await kit.listOutcomeMarkets()
-const market = await kit.getOutcomeMarket({ outcome: markets[0].outcome })
-const yesBook = await kit.getOutcomeBook({ outcome: market.outcome, side: 0 })
-
-console.log(market.descriptionFields)
-console.log(market.sides[0].coin, yesBook.levels)
-```
-
-The endpoint shape does not yet expose a stable quote/settlement asset in the
-SDK response, so this API intentionally avoids promising USDH settlement until
-that is verified against live/testnet markets.
-
 ## Features (V1)
 
 * `USDC → USDH` quote and swap via the canonical HL spot pair
@@ -184,8 +164,7 @@ that is verified against live/testnet markets.
 * `getRoute()` / `preflightSwap()` route selection and preflight metadata
 * `bridgeAndSwap()` high-level orchestration with progress callbacks
 * Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
-* Read-only `InfoClient` (spotMeta, outcomeMeta, spot clearinghouse state, L2 book)
-* Experimental HIP-4 outcome helpers (`listOutcomeMarkets`, `getOutcomeMarket`, `getOutcomeBook`)
+* Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book)
 * Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` narrowing
 * npm provenance on every release
 * Mainnet and testnet support, no signing on read paths
