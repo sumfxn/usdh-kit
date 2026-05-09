@@ -7,6 +7,14 @@ import {
   NetworkError,
   NotImplementedError,
 } from './errors.js'
+import {
+  type GetOutcomeBookInput,
+  type GetOutcomeMarketInput,
+  type OutcomeMarket,
+  getOutcomeBook,
+  getOutcomeMarket,
+  listOutcomeMarkets,
+} from './outcomes.js'
 import { type ResolvedPair, createPairResolver } from './pair-resolver.js'
 import {
   applyPriceInverse,
@@ -24,6 +32,7 @@ import {
   isOrderResponse,
 } from './transport/exchange.js'
 import { type InfoClient, createInfoClient } from './transport/info.js'
+import type { L2Book } from './transport/types.js'
 import type { BridgeInput, BridgeResult } from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
@@ -79,6 +88,12 @@ export interface UsdhKit {
    * timeout 180s). Requires `KitConfig.evmWallet`.
    */
   bridgeToCore(input: BridgeInput): Promise<BridgeResult>
+  /** Experimental read-only HIP-4 outcome market discovery. */
+  listOutcomeMarkets(): Promise<OutcomeMarket[]>
+  /** Fetch one outcome market from `outcomeMeta` by outcome id. */
+  getOutcomeMarket(input: GetOutcomeMarketInput): Promise<OutcomeMarket>
+  /** Fetch the L2 book for one binary outcome side. */
+  getOutcomeBook(input: GetOutcomeBookInput): Promise<L2Book>
 }
 
 /**
@@ -288,6 +303,18 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
         pair: pair.name,
         validUntil: Date.now() + QUOTE_TTL_MS,
       }
+    },
+
+    async listOutcomeMarkets(): Promise<OutcomeMarket[]> {
+      return listOutcomeMarkets(info)
+    },
+
+    async getOutcomeMarket(input: GetOutcomeMarketInput): Promise<OutcomeMarket> {
+      return getOutcomeMarket(info, input)
+    },
+
+    async getOutcomeBook(input: GetOutcomeBookInput): Promise<L2Book> {
+      return getOutcomeBook(info, input)
     },
   }
 

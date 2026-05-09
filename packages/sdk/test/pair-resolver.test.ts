@@ -78,6 +78,7 @@ describe('createPairResolver', () => {
   function stubInfo(): InfoClient {
     return {
       spotMeta: vi.fn(async () => meta),
+      outcomeMeta: vi.fn(),
       l2Book: vi.fn(),
       spotClearinghouseState: vi.fn(),
     }

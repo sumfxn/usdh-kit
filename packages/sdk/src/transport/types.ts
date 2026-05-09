@@ -58,3 +58,28 @@ export interface SpotBalance {
 export interface SpotClearinghouseState {
   balances: SpotBalance[]
 }
+
+export interface OutcomeSideSpec {
+  name: string
+}
+
+export interface OutcomeMetaOutcome {
+  outcome: number
+  name: string
+  description: string
+  sideSpecs: OutcomeSideSpec[]
+}
+
+export interface OutcomeMetaQuestion {
+  question: number
+  name: string
+  description: string
+  fallbackOutcome: number
+  namedOutcomes: number[]
+  settledNamedOutcomes: number[]
+}
+
+export interface OutcomeMeta {
+  outcomes: OutcomeMetaOutcome[]
+  questions?: OutcomeMetaQuestion[]
+}
