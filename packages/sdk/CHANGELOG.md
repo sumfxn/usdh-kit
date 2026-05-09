@@ -1,5 +1,14 @@
 # @usdh-kit/sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- 0e23263: Add experimental read-only HIP-4 outcome market helpers. The SDK now exposes
+  `InfoClient.outcomeMeta()`, outcome side encoding utilities, and kit-level
+  `listOutcomeMarkets()`, `getOutcomeMarket()`, and `getOutcomeBook()` methods for
+  active outcome discovery and book reads.
+
 ## 0.2.0
 
 ### Minor Changes

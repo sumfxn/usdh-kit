@@ -1,5 +1,12 @@
 # @usdh-kit/widget
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [0e23263]
+  - @usdh-kit/sdk@0.3.0
+
 ## 0.1.0
 
 ### Minor Changes

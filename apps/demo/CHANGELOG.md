@@ -1,5 +1,13 @@
 # @usdh-kit-apps/demo
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [0e23263]
+  - @usdh-kit/sdk@0.3.0
+  - @usdh-kit/widget@1.0.0
+
 ## 0.0.1
 
 ### Patch Changes

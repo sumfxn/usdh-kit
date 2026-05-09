@@ -1,5 +1,12 @@
 # @usdh-kit-examples/payment-webhook
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [0e23263]
+  - @usdh-kit/sdk@0.3.0
+
 ## 0.0.1
 
 ### Patch Changes
