@@ -1,0 +1,243 @@
+# Roadmap
+
+> Status: proposal.
+> Direction: keep `usdh-kit` centered on USDH, but expand from "obtain USDH via
+> USDC" to "interact cleanly with USDH surfaces on Hyperliquid".
+
+## TL;DR
+
+`usdh-kit` should not become a generic Hyperliquid SDK. It should expose the
+small set of primitives that make USDH useful:
+
+1. discover USDH markets and USDH-denominated surfaces
+2. work with USDH outcomes first, if markets are natively `/USDH`
+3. trade USDH markets through a focused order API
+4. keep the current USDC -> USDH acquisition flow simple
+5. treat HyperEVM direct swaps as a separate spike until liquidity/routing is
+   validated
+
+## Current SDK baseline
+
+What already works:
+
+- `USDC -> USDH` quote and swap on HyperCore
+- HyperEVM -> HyperCore bridge for USDC
+- HyperCore balance reads and route/preflight helpers
+- `bridgeAndSwap()` for route -> optional bridge -> swap
+- `InfoClient` reads for `spotMeta`, `spotClearinghouseState`, and `l2Book`
+- typed lifecycle errors, including `BridgeAndSwapError` and
+  `isBridgeAndSwapError()`
+- React widget on top of the SDK
+
+This remains the core retail path. New roadmap items should preserve that simple
+path instead of forcing integrators into a broader trading abstraction.
+
+## Track 1 - Discovery USDH
+
+Owner: @Yaugourt
+
+Expose the markets and surfaces related to USDH. Start with spot markets, keep
+outcomes clearly in scope, and keep HIP-3 as experimental/watchlist until the
+shape is validated.
+
+### Goals
+
+- Replace one-off `USDH/USDC` pair lookup with USDH-aware discovery.
+- Let consumers list USDH spot markets without hand-parsing Hyperliquid metadata.
+- Preserve explicit orientation: USDH can be base or quote.
+- Return enough metadata for UI, quoting, and later order placement.
+- Avoid promising generic Hyperliquid market discovery.
+
+### Proposed API
+
+```ts
+kit.listPairs({ quote?: 'USDH', kind?: 'spot' }): Promise<UsdhPair[]>
+kit.getPair({ base, quote, kind?: 'spot' }): Promise<UsdhPair>
+kit.getBook(pair: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
+kit.getMids(opts?: { quote?: 'USDH' }): Promise<Record<string, string>>
+```
+
+Types should make orientation explicit:
+
+```ts
+type UsdhPair = {
+  kind: 'spot'
+  name: string
+  base: string
+  quote: string
+  usdhRole: 'base' | 'quote'
+  index: number
+  tokens: [number, number]
+}
+```
+
+### Scope
+
+- In scope now:
+  - spot pairs where USDH is base or quote
+  - book/mid helpers for those pairs
+  - caching by pair name or token tuple
+  - testnet/mainnet token-index handling behind existing network config
+- Watchlist:
+  - HIP-3 USDH-denominated markets
+  - outcome metadata, once Track 2 confirms the exact API shape
+- Out of scope:
+  - generic pair discovery for all assets
+  - generic perps SDK
+  - routing across arbitrary token graphs
+
+## Track 2 - Outcomes USDH
+
+Owner: @sumfxn
+
+Prioritize this if outcomes are natively denominated in USDH. This is a stronger
+USDH use case than generic perps because it creates direct demand for USDH as the
+settlement/quote asset.
+
+### Goals
+
+- Discover USDH-denominated outcome markets.
+- Read outcome books and mids with the same ergonomics as spot.
+- Make outcome support clearly experimental until tested against live/testnet
+  markets.
+- Keep the outcome API narrow and product-shaped.
+
+### Proposed API
+
+```ts
+kit.listOutcomeMarkets({ quote?: 'USDH' }): Promise<UsdhOutcomeMarket[]>
+kit.getOutcomeMarket(id: string): Promise<UsdhOutcomeMarket>
+kit.getOutcomeBook(id: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
+```
+
+Possible later write path:
+
+```ts
+kit.placeOutcomeOrder({
+  market,
+  side,
+  price,
+  size,
+  tif,
+}): Promise<OrderResult>
+```
+
+### First spike questions
+
+- What endpoint shape exposes outcome metadata today?
+- Are outcome markets represented like spot pairs, HIP-3 markets, or a separate
+  namespace?
+- Is USDH always the quote/settlement asset, or can it vary by market?
+- Are orders submitted through the same exchange action format as spot?
+- What minimal read-only support can ship before any write support?
+
+## Track 3 - Targeted USDH trading
+
+Build only the trading primitives needed for USDH markets:
+
+```ts
+kit.placeOrder(...)
+kit.cancelOrder(...)
+kit.getOpenOrders(...)
+kit.getOrderStatus(...)
+```
+
+This should be a focused USDH-market order layer, not a full Hyperliquid SDK.
+
+### Scope
+
+- In scope:
+  - `placeOrder`
+  - `cancelOrder`
+  - `getOpenOrders`
+  - `getOrderStatus`
+  - shared order formatting/signing reused by `swap()`
+  - typed order errors and `friendlyError()` mappings
+- Later:
+  - modify order
+  - batch helpers
+  - vault/subaccount support
+  - agent wallets
+  - TWAP/dead-man switch
+
+`swap()` should remain a high-level convenience wrapper, not be replaced by a
+lower-level order API in docs.
+
+## Track 4 - Useful USDH flows
+
+Keep the UX simple:
+
+- `USDC -> USDH` remains the core path
+- add `USDH -> USDC`
+- add `bridgeFromCore`
+- avoid arbitrary multi-hop routing for now
+
+### Proposed additions
+
+```ts
+kit.swap({ from: 'USDH', to: 'USDC', amount, ... })
+kit.bridgeFromCore({ asset: 'USDC' | 'USDH', amount, recipient? })
+```
+
+Multi-hop via arbitrary intermediate assets should stay out of scope until there
+is a clear product need and enough tests to make route selection safe.
+
+## Track 5 - HyperEVM direct swap
+
+Treat as a separate spike.
+
+Before promising this in public API, validate:
+
+- USDH liquidity on HyperEVM
+- which DEX/router to integrate first
+- quote accuracy
+- slippage and `minOut` behavior
+- allowance flow
+- gas and failure modes
+
+Possible future shape:
+
+```ts
+kit.evmQuote({ from, to, amount }): Promise<EvmQuote>
+kit.evmSwap({ from, to, amount, minOut?, recipient?, deadline? }): Promise<EvmSwapResult>
+```
+
+Do not block Tracks 1 and 2 on this.
+
+## Initial split
+
+Start with two parallel PRs:
+
+1. @Yaugourt: Track 1, Discovery USDH
+   - spot USDH market discovery first
+   - book/mid helpers
+   - API and tests only for confirmed metadata shape
+   - leave hooks/types clean enough for outcomes, but do not implement outcomes
+     in the same PR
+
+2. @sumfxn: Track 2, Outcomes USDH
+   - inspect real outcome metadata/API shape
+   - land a read-only experimental API if the shape is stable enough
+   - document any unknowns before write support
+
+After both land, revisit Track 3 with actual market metadata in hand.
+
+## Non-goals
+
+- Becoming a generic Hyperliquid SDK
+- Generic perps support
+- Arbitrary routing/multi-hop
+- HyperEVM direct swap before liquidity and router validation
+- Broad agent/vault support before the USDH-specific API is settled
+
+## Open questions
+
+1. Should `listPairs()` default to spot-only USDH markets? Proposed: yes.
+2. Should outcomes live under `listPairs({ kind: 'outcome' })` or separate
+   `listOutcomeMarkets()`? Proposed: separate API until the metadata shape is
+   proven.
+3. Should Track 3 support only USDH pairs, or any pair returned by
+   `listPairs()`? Proposed: only USDH pairs for this package.
+4. Which API should expose HIP-3 USDH markets, if any? Proposed: experimental
+   watchlist after spot/outcomes.
+5. What is the minimum useful `bridgeFromCore` API for integrators?
