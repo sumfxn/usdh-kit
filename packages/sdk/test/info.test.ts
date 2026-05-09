@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { InvalidInputError, NetworkError } from '../src/errors.js'
 import { createInfoClient } from '../src/transport/info.js'
-import type { L2Book, SpotMeta } from '../src/transport/types.js'
+import type { L2Book, OutcomeMeta, SpotMeta } from '../src/transport/types.js'
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -38,6 +38,17 @@ const sampleL2Book: L2Book = {
   coin: 'USDH/USDC',
   time: 1735300000000,
   levels: [[{ px: '0.9998', sz: '10000', n: 1 }], [{ px: '1.0001', sz: '10000', n: 1 }]],
+}
+
+const sampleOutcomeMeta: OutcomeMeta = {
+  outcomes: [
+    {
+      outcome: 123,
+      name: 'Recurring',
+      description: 'class:priceBinary|underlying:HYPE|expiry:20260310-1100|targetPrice:34.5',
+      sideSpecs: [{ name: 'Yes' }, { name: 'No' }],
+    },
+  ],
 }
 
 describe('createInfoClient', () => {
@@ -82,6 +93,23 @@ describe('spotMeta', () => {
     const client = createInfoClient({ network: 'mainnet', fetch })
     const result = await client.spotMeta()
     expect(result).toEqual(sampleSpotMeta)
+  })
+})
+
+describe('outcomeMeta', () => {
+  it('passes the outcomeMeta type in the body', async () => {
+    const fetch = vi.fn(async () => jsonResponse(sampleOutcomeMeta))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await client.outcomeMeta()
+    const [, init] = fetch.mock.calls[0] ?? []
+    expect(JSON.parse(init?.body as string)).toEqual({ type: 'outcomeMeta' })
+  })
+
+  it('returns the parsed payload', async () => {
+    const fetch = vi.fn(async () => jsonResponse(sampleOutcomeMeta))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    const result = await client.outcomeMeta()
+    expect(result).toEqual(sampleOutcomeMeta)
   })
 })
 
