@@ -1,12 +1,12 @@
 import { NetworkError } from './errors.js'
 import type { InfoClient, NSigFigs } from './transport/info.js'
-import type { L2Book, SpotMeta } from './transport/types.js'
+import type { L2Book, SpotMeta, SpotToken } from './transport/types.js'
 
 const USDH_TOKEN_NAME = 'USDH'
 
 export interface UsdhPair {
   kind: 'spot'
-  /** Pair name as used by HL info endpoints (e.g. "USDH/USDC"). */
+  /** Pair name as used by HL info endpoints, usually `@<spotIndex>` for spot. */
   name: string
   /** Base token name. */
   base: string
@@ -45,12 +45,13 @@ export function listUsdhSpotPairs(meta: SpotMeta): UsdhPair[] {
   if (usdh === undefined) {
     throw new NetworkError(`${USDH_TOKEN_NAME} token not found in spotMeta`)
   }
+  const tokens = tokenIndexMap(meta.tokens)
   const out: UsdhPair[] = []
   for (const pair of meta.universe) {
     const [baseIdx, quoteIdx] = pair.tokens
     if (baseIdx !== usdh.index && quoteIdx !== usdh.index) continue
-    const baseToken = meta.tokens[baseIdx]
-    const quoteToken = meta.tokens[quoteIdx]
+    const baseToken = tokens.get(baseIdx)
+    const quoteToken = tokens.get(quoteIdx)
     if (baseToken === undefined || quoteToken === undefined) continue
     out.push({
       kind: 'spot',
@@ -148,4 +149,8 @@ function assertSpotKind(kind: string | undefined): void {
   if (kind !== undefined && kind !== 'spot') {
     throw new NetworkError(`unsupported pair kind: ${kind}`)
   }
+}
+
+function tokenIndexMap(tokens: SpotToken[]): Map<number, SpotToken> {
+  return new Map(tokens.map((token) => [token.index, token]))
 }

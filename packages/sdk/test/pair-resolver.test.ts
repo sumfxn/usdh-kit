@@ -6,7 +6,7 @@ import type { InfoClient } from '../src/transport/info.js'
 import type { SpotMeta } from '../src/transport/types.js'
 
 const meta: SpotMeta = {
-  universe: [{ name: 'USDH/USDC', tokens: [1, 0], index: 0, isCanonical: true }],
+  universe: [{ name: '@230', tokens: [1, 0], index: 230, isCanonical: false }],
   tokens: [
     {
       name: 'USDC',
@@ -30,9 +30,9 @@ const meta: SpotMeta = {
 describe('findUsdhUsdcPair', () => {
   it('finds the canonical pair with token decimals', () => {
     expect(findUsdhUsdcPair(meta)).toEqual({
-      name: 'USDH/USDC',
-      index: 0,
-      assetIndex: 10000,
+      name: '@230',
+      index: 230,
+      assetIndex: 10230,
       tokens: [1, 0],
       baseSzDecimals: 8,
       quoteWeiDecimals: 8,
@@ -66,11 +66,41 @@ describe('findUsdhUsdcPair', () => {
   it('reads pair.index from spotMeta, not the array position', () => {
     const mainnetLike: SpotMeta = {
       ...meta,
-      universe: [{ name: 'USDH/USDC', tokens: [1, 0], index: 230, isCanonical: true }],
+      universe: [{ name: '@230', tokens: [1, 0], index: 230, isCanonical: false }],
     }
     const resolved = findUsdhUsdcPair(mainnetLike)
     expect(resolved.index).toBe(230)
     expect(resolved.assetIndex).toBe(10_230)
+  })
+
+  it('resolves token metadata by token.index instead of array position', () => {
+    const sparse: SpotMeta = {
+      universe: [{ name: '@1338', tokens: [1452, 0], index: 1338, isCanonical: false }],
+      tokens: [
+        {
+          name: 'USDC',
+          szDecimals: 8,
+          weiDecimals: 8,
+          index: 0,
+          tokenId: '0xaaaa',
+          isCanonical: true,
+        },
+        {
+          name: 'USDH',
+          szDecimals: 2,
+          weiDecimals: 8,
+          index: 1452,
+          tokenId: '0xbbbb',
+          isCanonical: false,
+        },
+      ],
+    }
+
+    expect(findUsdhUsdcPair(sparse)).toMatchObject({
+      name: '@1338',
+      baseSzDecimals: 2,
+      quoteWeiDecimals: 8,
+    })
   })
 })
 

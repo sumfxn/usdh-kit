@@ -1,9 +1,9 @@
 import { NetworkError } from './errors.js'
 import type { InfoClient } from './transport/info.js'
-import type { SpotMeta } from './transport/types.js'
+import type { SpotMeta, SpotToken } from './transport/types.js'
 
 export interface ResolvedPair {
-  /** Pair name as used by HL info endpoints (e.g. "USDH/USDC"). */
+  /** Pair name as used by HL info endpoints, usually `@<spotIndex>` for spot. */
   name: string
   /** Index into `spotMeta.universe`. */
   index: number
@@ -39,8 +39,9 @@ export function findUsdhUsdcPair(meta: SpotMeta): ResolvedPair {
       'USDH/USDC pair not found in spotMeta with USDH as base and USDC as quote',
     )
   }
-  const baseToken = meta.tokens[pair.tokens[0]]
-  const quoteToken = meta.tokens[pair.tokens[1]]
+  const tokens = tokenIndexMap(meta.tokens)
+  const baseToken = tokens.get(pair.tokens[0])
+  const quoteToken = tokens.get(pair.tokens[1])
   if (baseToken === undefined || quoteToken === undefined) {
     throw new NetworkError('pair token indices do not resolve in spotMeta')
   }
@@ -52,6 +53,10 @@ export function findUsdhUsdcPair(meta: SpotMeta): ResolvedPair {
     baseSzDecimals: baseToken.szDecimals,
     quoteWeiDecimals: quoteToken.weiDecimals,
   }
+}
+
+function tokenIndexMap(tokens: SpotToken[]): Map<number, SpotToken> {
+  return new Map(tokens.map((token) => [token.index, token]))
 }
 
 /**

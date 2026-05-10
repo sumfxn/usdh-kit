@@ -35,7 +35,7 @@ const sampleSpotMeta: SpotMeta = {
 }
 
 const sampleL2Book: L2Book = {
-  coin: 'USDH/USDC',
+  coin: '@230',
   time: 1735300000000,
   levels: [[{ px: '0.9998', sz: '10000', n: 1 }], [{ px: '1.0001', sz: '10000', n: 1 }]],
 }
@@ -89,11 +89,11 @@ describe('l2Book', () => {
   it('passes coin and nSigFigs in the body', async () => {
     const fetch = vi.fn(async () => jsonResponse(sampleL2Book))
     const client = createInfoClient({ network: 'mainnet', fetch })
-    await client.l2Book('USDH/USDC', 5)
+    await client.l2Book('@230', 5)
     const [, init] = fetch.mock.calls[0] ?? []
     expect(JSON.parse(init?.body as string)).toEqual({
       type: 'l2Book',
-      coin: 'USDH/USDC',
+      coin: '@230',
       nSigFigs: 5,
     })
   })
@@ -101,11 +101,11 @@ describe('l2Book', () => {
   it('defaults nSigFigs to null', async () => {
     const fetch = vi.fn(async () => jsonResponse(sampleL2Book))
     const client = createInfoClient({ network: 'mainnet', fetch })
-    await client.l2Book('USDH/USDC')
+    await client.l2Book('@230')
     const [, init] = fetch.mock.calls[0] ?? []
     expect(JSON.parse(init?.body as string)).toEqual({
       type: 'l2Book',
-      coin: 'USDH/USDC',
+      coin: '@230',
       nSigFigs: null,
     })
   })
@@ -113,8 +113,23 @@ describe('l2Book', () => {
   it('returns the parsed book', async () => {
     const fetch = vi.fn(async () => jsonResponse(sampleL2Book))
     const client = createInfoClient({ network: 'mainnet', fetch })
-    const result = await client.l2Book('USDH/USDC')
+    const result = await client.l2Book('@230')
     expect(result).toEqual(sampleL2Book)
+  })
+
+  it('rejects null l2Book responses', async () => {
+    const fetch = vi.fn(async () => jsonResponse(null))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await expect(client.l2Book('USDH/USDC')).rejects.toMatchObject({
+      name: 'NetworkError',
+      message: 'invalid l2Book response for USDH/USDC',
+    })
+  })
+
+  it('rejects malformed l2Book responses', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ coin: '@230', time: 1, levels: [] }))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await expect(client.l2Book('@230')).rejects.toThrow(/invalid l2Book response/)
   })
 })
 
@@ -126,6 +141,12 @@ describe('allMids', () => {
     const [, init] = fetch.mock.calls[0] ?? []
     expect(JSON.parse(init?.body as string)).toEqual({ type: 'allMids' })
     expect(result).toEqual({ BTC: '60000', '@0': '1.0001' })
+  })
+
+  it('rejects malformed allMids responses', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ BTC: 60000 }))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await expect(client.allMids()).rejects.toThrow(/invalid allMids response/)
   })
 })
 
@@ -185,9 +206,9 @@ describe('input validation', () => {
     const fetch = vi.fn(async () => jsonResponse(sampleL2Book))
     const client = createInfoClient({ network: 'mainnet', fetch })
     // biome-ignore lint/suspicious/noExplicitAny: deliberately bad input
-    expect(() => client.l2Book('USDH/USDC', 1 as any)).toThrow(InvalidInputError)
+    expect(() => client.l2Book('@230', 1 as any)).toThrow(InvalidInputError)
     // biome-ignore lint/suspicious/noExplicitAny: deliberately bad input
-    expect(() => client.l2Book('USDH/USDC', 6 as any)).toThrow(InvalidInputError)
+    expect(() => client.l2Book('@230', 6 as any)).toThrow(InvalidInputError)
     expect(fetch).not.toHaveBeenCalled()
   })
 })

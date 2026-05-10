@@ -7,8 +7,8 @@ import type { SpotMeta } from '../src/transport/types.js'
 
 const meta: SpotMeta = {
   universe: [
-    { name: 'USDH/USDC', tokens: [1, 0], index: 0, isCanonical: true },
-    { name: 'HYPE/USDH', tokens: [2, 1], index: 5, isCanonical: true },
+    { name: '@230', tokens: [1, 0], index: 230, isCanonical: false },
+    { name: '@232', tokens: [2, 1], index: 232, isCanonical: false },
     { name: 'HYPE/USDC', tokens: [2, 0], index: 9, isCanonical: false },
   ],
   tokens: [
@@ -44,21 +44,65 @@ describe('listUsdhSpotPairs', () => {
     expect(listUsdhSpotPairs(meta)).toEqual([
       {
         kind: 'spot',
-        name: 'USDH/USDC',
+        name: '@230',
         base: 'USDH',
         quote: 'USDC',
         usdhRole: 'base',
-        index: 0,
+        index: 230,
         tokens: [1, 0],
       },
       {
         kind: 'spot',
-        name: 'HYPE/USDH',
+        name: '@232',
         base: 'HYPE',
         quote: 'USDH',
         usdhRole: 'quote',
-        index: 5,
+        index: 232,
         tokens: [2, 1],
+      },
+    ])
+  })
+
+  it('resolves sparse token indices by token.index rather than array position', () => {
+    const sparse: SpotMeta = {
+      universe: [{ name: '@1415', tokens: [1540, 1452], index: 1415, isCanonical: false }],
+      tokens: [
+        {
+          name: 'SALMON',
+          szDecimals: 2,
+          weiDecimals: 8,
+          index: 1544,
+          tokenId: '0xaaaa',
+          isCanonical: false,
+        },
+        {
+          name: 'USDH',
+          szDecimals: 2,
+          weiDecimals: 8,
+          index: 1452,
+          tokenId: '0xbbbb',
+          isCanonical: false,
+        },
+        {
+          name: 'RUBT',
+          szDecimals: 1,
+          weiDecimals: 6,
+          index: 1540,
+          tokenId: '0xcccc',
+          isCanonical: false,
+        },
+      ],
+    }
+
+    expect(listUsdhSpotPairs(sparse)).toEqual([
+      {
+        kind: 'spot',
+        name: '@1415',
+        base: 'RUBT',
+        quote: 'USDH',
+        usdhRole: 'quote',
+        index: 1415,
+        tokens: [1540, 1452],
       },
     ])
   })
@@ -117,7 +161,7 @@ describe('createDiscovery', () => {
 
   it('filters listPairs to USDH-quote pairs when requested', async () => {
     const discovery = createDiscovery(stubInfo())
-    expect((await discovery.listPairs({ quote: 'USDH' })).map((p) => p.name)).toEqual(['HYPE/USDH'])
+    expect((await discovery.listPairs({ quote: 'USDH' })).map((p) => p.name)).toEqual(['@232'])
   })
 
   it('rejects unsupported pair kinds', async () => {
@@ -144,10 +188,10 @@ describe('createDiscovery', () => {
   it('filters mids to USDH-quote pairs and rekeys by pair name', async () => {
     const allMids = vi.fn(async () => ({
       BTC: '60000',
-      '@0': '1.0001',
-      '@5': '42.5',
+      '@230': '1.0001',
+      '@232': '42.5',
     }))
     const discovery = createDiscovery(stubInfo({ allMids }))
-    expect(await discovery.getMids({ quote: 'USDH' })).toEqual({ 'HYPE/USDH': '42.5' })
+    expect(await discovery.getMids({ quote: 'USDH' })).toEqual({ '@232': '42.5' })
   })
 })
