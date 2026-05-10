@@ -1,5 +1,12 @@
 import { runBridgeToCore } from './bridge.js'
 import {
+  type GetMidsOpts,
+  type GetUsdhPairInput,
+  type ListUsdhPairsOpts,
+  type UsdhPair,
+  createDiscovery,
+} from './discovery.js'
+import {
   BridgeAndSwapError,
   InsufficientBalanceError,
   InvalidInputError,
@@ -23,7 +30,8 @@ import {
   createExchangeClient,
   isOrderResponse,
 } from './transport/exchange.js'
-import { type InfoClient, createInfoClient } from './transport/info.js'
+import { type InfoClient, type NSigFigs, createInfoClient } from './transport/info.js'
+import type { L2Book } from './transport/types.js'
 import type { BridgeInput, BridgeResult } from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
@@ -79,6 +87,14 @@ export interface UsdhKit {
    * timeout 180s). Requires `KitConfig.evmWallet`.
    */
   bridgeToCore(input: BridgeInput): Promise<BridgeResult>
+  /** List USDH-bearing spot pairs from `spotMeta`. Cached after the first call. */
+  listPairs(opts?: ListUsdhPairsOpts): Promise<UsdhPair[]>
+  /** Find one USDH-bearing spot pair by base/quote token names. */
+  getPair(input: GetUsdhPairInput): Promise<UsdhPair>
+  /** Fetch the L2 book for a pair name (e.g. "USDH/USDC"). */
+  getBook(pair: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
+  /** Fetch mid prices, optionally filtered to USDH-quote pairs. */
+  getMids(opts?: GetMidsOpts): Promise<Record<string, string>>
 }
 
 /**
@@ -101,6 +117,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     ...(config.timeoutMs !== undefined && { timeoutMs: config.timeoutMs }),
   })
   const resolvePair = createPairResolver(info)
+  const discovery = createDiscovery(info)
   let lastNonce = 0n
 
   function nextNonce(): bigint {
@@ -267,6 +284,22 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
           logger,
         },
       )
+    },
+
+    listPairs(opts) {
+      return discovery.listPairs(opts)
+    },
+
+    getPair(input) {
+      return discovery.getPair(input)
+    },
+
+    getBook(pair, opts) {
+      return discovery.getBook(pair, opts)
+    },
+
+    getMids(opts) {
+      return discovery.getMids(opts)
     },
 
     async getQuote(input: QuoteInput): Promise<Quote> {

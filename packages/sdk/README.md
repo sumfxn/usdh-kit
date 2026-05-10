@@ -23,7 +23,8 @@ What works today:
 * `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 * `getRoute()` / `preflightSwap()` for HyperCore-vs-HyperEVM source selection
 * `bridgeAndSwap()` for route → optional bridge → swap orchestration
-* Read-only `InfoClient` (spotMeta, spotClearinghouseState, L2 book)
+* USDH spot market discovery (`listPairs`, `getPair`, `getBook`, `getMids`)
+* Read-only `InfoClient` (spotMeta, spotClearinghouseState, L2 book, allMids)
 
 Deferred to follow-up PRs: USDT pricing/swap, reverse direction (USDH → USDC), multi-chain source.
 
@@ -130,6 +131,23 @@ if (route.requiresBridge) {
 the bridge route, `canSwap` only means the kit has an `evmWallet` configured;
 the wallet/RPC will still reject an underfunded bridge transaction.
 
+## Discover USDH spot markets
+
+`listPairs()` returns every Hyperliquid spot pair where USDH is either base or
+quote. Spot pair names often use Hyperliquid's `@<spotIndex>` format; pass the
+returned `pair.name` back into `getBook()`.
+
+```ts
+const pairs = await kit.listPairs()
+const usdhQuotes = await kit.listPairs({ quote: 'USDH' })
+
+const hypeUsdh = await kit.getPair({ base: 'HYPE', quote: 'USDH' })
+const book = await kit.getBook(hypeUsdh.name, { nSigFigs: 5 })
+const mids = await kit.getMids({ quote: 'USDH' })
+
+console.log(pairs.length, usdhQuotes.length, book.coin, mids[hypeUsdh.name])
+```
+
 ## Bridge and swap
 
 `bridgeAndSwap()` composes the common retail flow:
@@ -163,8 +181,9 @@ Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. 
 * HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
 * `getRoute()` / `preflightSwap()` route selection and preflight metadata
 * `bridgeAndSwap()` high-level orchestration with progress callbacks
+* USDH spot market discovery and read-only books/mids for USDH pairs
 * Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
-* Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book)
+* Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book, allMids)
 * Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` narrowing
 * npm provenance on every release
 * Mainnet and testnet support, no signing on read paths

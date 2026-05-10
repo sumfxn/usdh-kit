@@ -57,6 +57,7 @@ function stubInfo(states: SpotClearinghouseState[]): InfoClient {
       i += 1
       return s as SpotClearinghouseState
     }),
+    allMids: vi.fn(),
   }
 }
 
@@ -195,6 +196,7 @@ describe('runBridgeToCore', () => {
       spotMeta: vi.fn(async () => meta),
       l2Book: vi.fn(),
       spotClearinghouseState: vi.fn(),
+      allMids: vi.fn(),
     }
     await expect(
       runBridgeToCore(
@@ -388,6 +390,7 @@ describe('runBridgeToCore', () => {
         if (calls === 2) throw new Error('transient http blip')
         return calls < 4 ? stateWith('0') : stateWith('100')
       }),
+      allMids: vi.fn(),
     }
     const wallet = stubWallet(`0x${'a'.repeat(64)}`)
     let t = 0

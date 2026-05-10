@@ -24,6 +24,8 @@ export interface InfoClient {
   spotMeta(): Promise<SpotMeta>
   l2Book(coin: string, nSigFigs?: NSigFigs): Promise<L2Book>
   spotClearinghouseState(user: Address): Promise<SpotClearinghouseState>
+  /** Returns mid prices keyed by coin name (perps) or `@<spotIndex>` (spot). */
+  allMids(): Promise<Record<string, string>>
 }
 
 export function createInfoClient(config: InfoClientConfig): InfoClient {
@@ -89,10 +91,62 @@ export function createInfoClient(config: InfoClientConfig): InfoClient {
       if (nSigFigs !== undefined && ![2, 3, 4, 5].includes(nSigFigs)) {
         throw new InvalidInputError('nSigFigs must be 2, 3, 4, or 5')
       }
-      return post<L2Book>({ type: 'l2Book', coin, nSigFigs: nSigFigs ?? null })
+      return post<unknown>({ type: 'l2Book', coin, nSigFigs: nSigFigs ?? null }).then((data) =>
+        assertL2Book(data, coin),
+      )
     },
     spotClearinghouseState(user) {
       return post<SpotClearinghouseState>({ type: 'spotClearinghouseState', user })
     },
+    allMids() {
+      return post<unknown>({ type: 'allMids' }).then(assertAllMids)
+    },
   }
+}
+
+function assertL2Book(data: unknown, coin: string): L2Book {
+  if (!isRecord(data)) {
+    throw new NetworkError(`invalid l2Book response for ${coin}`)
+  }
+  const book = data as { coin?: unknown; time?: unknown; levels?: unknown }
+  const levels = book.levels
+  if (
+    book.coin !== coin ||
+    typeof book.time !== 'number' ||
+    !Array.isArray(levels) ||
+    levels.length !== 2 ||
+    !Array.isArray(levels[0]) ||
+    !Array.isArray(levels[1]) ||
+    !levels[0].every(isL2Level) ||
+    !levels[1].every(isL2Level)
+  ) {
+    throw new NetworkError(`invalid l2Book response for ${coin}`)
+  }
+  return data as unknown as L2Book
+}
+
+function assertAllMids(data: unknown): Record<string, string> {
+  if (!isRecord(data)) {
+    throw new NetworkError('invalid allMids response')
+  }
+  for (const [coin, mid] of Object.entries(data)) {
+    if (typeof mid !== 'string') {
+      throw new NetworkError(`invalid allMids response for ${coin}`)
+    }
+  }
+  return data as Record<string, string>
+}
+
+function isL2Level(value: unknown): boolean {
+  const level = value as { px?: unknown; sz?: unknown; n?: unknown }
+  return (
+    isRecord(value) &&
+    typeof level.px === 'string' &&
+    typeof level.sz === 'string' &&
+    typeof level.n === 'number'
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
