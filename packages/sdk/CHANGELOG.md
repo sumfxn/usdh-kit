@@ -1,5 +1,22 @@
 # @usdh-kit/sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- a9eb9ab: Add USDH spot market discovery. The kit now exposes `listPairs()`, `getPair()`,
+  `getBook()`, and `getMids()` for every spot pair where USDH is base or quote,
+  along with the `UsdhPair` type and the underlying `listUsdhSpotPairs` /
+  `findUsdhSpotPair` helpers. `InfoClient` gains an `allMids()` method to back
+  mid-price reads.
+- ebb0029: Add experimental read-only outcome market reads. The SDK now exposes outcome
+  metadata, encoded side books, and outcome mids through `createUsdhKit`, with
+  runtime `outcomeMeta` validation and safe outcome id encoding.
+
+### Patch Changes
+
+- c2eadbb: Add release safety guardrails, package licenses, and widget dependency metadata.
+
 ## 0.2.0
 
 ### Minor Changes
