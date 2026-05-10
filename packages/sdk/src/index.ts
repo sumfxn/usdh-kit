@@ -10,12 +10,30 @@ export type {
   ListUsdhPairsOpts,
   UsdhPair,
 } from './discovery.js'
+export {
+  normalizeOutcomeMeta,
+  outcomeAssetId,
+  outcomeCoin,
+  outcomeEncoding,
+  outcomeTokenName,
+} from './outcomes.js'
+export type {
+  GetOutcomeBookInput,
+  GetOutcomeMarketInput,
+  OutcomeSide,
+  OutcomeSideMarket,
+  UsdhOutcomeMarket,
+} from './outcomes.js'
 
 export { createInfoClient } from './transport/info.js'
 export type { InfoClient, InfoClientConfig, NSigFigs } from './transport/info.js'
 export type {
   L2Book,
   L2Level,
+  OutcomeMeta,
+  OutcomeMetaOutcome,
+  OutcomeMetaQuestion,
+  OutcomeSideSpec,
   SpotBalance,
   SpotClearinghouseState,
   SpotMeta,

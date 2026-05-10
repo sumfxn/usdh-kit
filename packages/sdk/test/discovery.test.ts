@@ -143,6 +143,7 @@ describe('createDiscovery', () => {
   function stubInfo(overrides: Partial<InfoClient> = {}): InfoClient {
     return {
       spotMeta: vi.fn(async () => meta),
+      outcomeMeta: vi.fn(),
       l2Book: vi.fn(),
       spotClearinghouseState: vi.fn(),
       allMids: vi.fn(),

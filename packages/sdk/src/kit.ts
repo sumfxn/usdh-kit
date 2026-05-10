@@ -14,6 +14,12 @@ import {
   NetworkError,
   NotImplementedError,
 } from './errors.js'
+import {
+  type GetOutcomeBookInput,
+  type GetOutcomeMarketInput,
+  type UsdhOutcomeMarket,
+  createOutcomeDiscovery,
+} from './outcomes.js'
 import { type ResolvedPair, createPairResolver } from './pair-resolver.js'
 import {
   applyPriceInverse,
@@ -95,6 +101,14 @@ export interface UsdhKit {
   getBook(pair: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
   /** Fetch mid prices, optionally filtered to USDH-quote pairs. */
   getMids(opts?: GetMidsOpts): Promise<Record<string, string>>
+  /** List experimental read-only outcome markets from Hyperliquid outcome metadata. */
+  listOutcomeMarkets(): Promise<UsdhOutcomeMarket[]>
+  /** Find one experimental read-only outcome market by numeric outcome id. */
+  getOutcomeMarket(input: GetOutcomeMarketInput): Promise<UsdhOutcomeMarket>
+  /** Fetch the L2 book for one experimental outcome side. */
+  getOutcomeBook(input: GetOutcomeBookInput): Promise<L2Book>
+  /** Fetch mid prices keyed by encoded outcome side coin, e.g. `#200`. */
+  getOutcomeMids(): Promise<Record<string, string>>
 }
 
 /**
@@ -118,6 +132,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
   })
   const resolvePair = createPairResolver(info)
   const discovery = createDiscovery(info)
+  const outcomeDiscovery = createOutcomeDiscovery(info)
   let lastNonce = 0n
 
   function nextNonce(): bigint {
@@ -300,6 +315,22 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     getMids(opts) {
       return discovery.getMids(opts)
+    },
+
+    listOutcomeMarkets() {
+      return outcomeDiscovery.listOutcomeMarkets()
+    },
+
+    getOutcomeMarket(input) {
+      return outcomeDiscovery.getOutcomeMarket(input)
+    },
+
+    getOutcomeBook(input) {
+      return outcomeDiscovery.getOutcomeBook(input)
+    },
+
+    getOutcomeMids() {
+      return outcomeDiscovery.getOutcomeMids()
     },
 
     async getQuote(input: QuoteInput): Promise<Quote> {

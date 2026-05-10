@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { InvalidInputError, NetworkError } from '../src/errors.js'
 import { createInfoClient } from '../src/transport/info.js'
-import type { L2Book, SpotMeta } from '../src/transport/types.js'
+import type { L2Book, OutcomeMeta, SpotMeta } from '../src/transport/types.js'
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -38,6 +38,27 @@ const sampleL2Book: L2Book = {
   coin: '@230',
   time: 1735300000000,
   levels: [[{ px: '0.9998', sz: '10000', n: 1 }], [{ px: '1.0001', sz: '10000', n: 1 }]],
+}
+
+const sampleOutcomeMeta: OutcomeMeta = {
+  outcomes: [
+    {
+      outcome: 20,
+      name: 'Recurring',
+      description: 'class:priceBinary|underlying:BTC|expiry:20260511-0600|targetPrice:80657',
+      sideSpecs: [{ name: 'Yes' }, { name: 'No' }],
+    },
+  ],
+  questions: [
+    {
+      question: 3,
+      name: 'Recurring',
+      description: 'class:priceBucket|underlying:BTC|expiry:20260511-0600',
+      fallbackOutcome: 21,
+      namedOutcomes: [22, 23, 24],
+      settledNamedOutcomes: [],
+    },
+  ],
 }
 
 describe('createInfoClient', () => {
@@ -82,6 +103,44 @@ describe('spotMeta', () => {
     const client = createInfoClient({ network: 'mainnet', fetch })
     const result = await client.spotMeta()
     expect(result).toEqual(sampleSpotMeta)
+  })
+})
+
+describe('outcomeMeta', () => {
+  it('posts an outcomeMeta body and returns the validated payload', async () => {
+    const fetch = vi.fn(async () => jsonResponse(sampleOutcomeMeta))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    const result = await client.outcomeMeta()
+    const [, init] = fetch.mock.calls[0] ?? []
+    expect(JSON.parse(init?.body as string)).toEqual({ type: 'outcomeMeta' })
+    expect(result).toEqual(sampleOutcomeMeta)
+  })
+
+  it('rejects missing outcomes', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ questions: [] }))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await expect(client.outcomeMeta()).rejects.toThrow(/invalid outcomeMeta response/)
+  })
+
+  it('rejects malformed outcome sideSpecs', async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse({
+        outcomes: [{ ...sampleOutcomeMeta.outcomes[0], sideSpecs: [{ name: 'Yes' }] }],
+      }),
+    )
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await expect(client.outcomeMeta()).rejects.toThrow(/invalid outcomeMeta outcome/)
+  })
+
+  it('rejects malformed questions', async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse({
+        ...sampleOutcomeMeta,
+        questions: [{ ...sampleOutcomeMeta.questions?.[0], namedOutcomes: ['22'] }],
+      }),
+    )
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await expect(client.outcomeMeta()).rejects.toThrow(/invalid outcomeMeta question/)
   })
 })
 

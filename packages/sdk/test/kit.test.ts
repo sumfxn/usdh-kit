@@ -11,7 +11,7 @@ import {
   createUsdhKit,
   isBridgeAndSwapError,
 } from '../src/index.js'
-import type { L2Book, SpotMeta } from '../src/transport/types.js'
+import type { L2Book, OutcomeMeta, SpotMeta } from '../src/transport/types.js'
 import type { EvmWallet } from '../src/types/evm-wallet.js'
 
 const stubSigner: Signer = {
@@ -52,6 +52,18 @@ const sampleL2Book: L2Book = {
   levels: [[{ px: '0.9998', sz: '10000', n: 1 }], [{ px: '1.0002', sz: '10000', n: 1 }]],
 }
 
+const sampleOutcomeMeta: OutcomeMeta = {
+  outcomes: [
+    {
+      outcome: 20,
+      name: 'Recurring',
+      description: 'class:priceBinary|underlying:BTC|expiry:20260511-0600|targetPrice:80657',
+      sideSpecs: [{ name: 'Yes' }, { name: 'No' }],
+    },
+  ],
+  questions: [],
+}
+
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -79,6 +91,32 @@ function backend(exchangeResponse: unknown): {
     throw new Error(`unexpected url: ${url}`)
   }) as unknown as typeof fetch
   return { fetch, getExchangeBody: () => exchangeBody }
+}
+
+function outcomeBackend(): {
+  fetch: typeof fetch
+  getInfoBodies: () => Record<string, unknown>[]
+} {
+  const infoBodies: Record<string, unknown>[] = []
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString()
+    const body = JSON.parse(init?.body as string) as Record<string, unknown>
+    if (!url.endsWith('/info')) throw new Error(`unexpected url: ${url}`)
+    infoBodies.push(body)
+    if (body.type === 'outcomeMeta') return jsonResponse(sampleOutcomeMeta)
+    if (body.type === 'l2Book') {
+      return jsonResponse({
+        coin: body.coin,
+        time: 1778427457824,
+        levels: [[{ px: '0.73331', sz: '136.0', n: 1 }], [{ px: '0.73332', sz: '222.0', n: 2 }]],
+      })
+    }
+    if (body.type === 'allMids') {
+      return jsonResponse({ '#200': '0.733315', '#201': '0.266685', BTC: '80657' })
+    }
+    throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
+  }) as unknown as typeof fetch
+  return { fetch, getInfoBodies: () => infoBodies }
 }
 
 type HcBalanceFixture = string | { total: string; hold?: string }
@@ -132,6 +170,39 @@ function stubEvmWallet(txHash = `0x${'c'.repeat(64)}`): EvmWallet & { calls: unk
     calls,
   }
 }
+
+describe('outcome market reads', () => {
+  it('lists and fetches experimental outcome markets', async () => {
+    const { fetch } = outcomeBackend()
+    const kit = createUsdhKit({ network: 'testnet', signer: stubSigner, fetch })
+
+    await expect(kit.listOutcomeMarkets()).resolves.toMatchObject([
+      { outcome: 20, sides: [{ coin: '#200' }, { coin: '#201' }] },
+    ])
+    await expect(kit.getOutcomeMarket({ outcome: 20 })).resolves.toMatchObject({
+      outcome: 20,
+      descriptionFields: { underlying: 'BTC' },
+    })
+  })
+
+  it('reads outcome books and mids through the kit', async () => {
+    const { fetch, getInfoBodies } = outcomeBackend()
+    const kit = createUsdhKit({ network: 'testnet', signer: stubSigner, fetch })
+
+    await expect(kit.getOutcomeBook({ outcome: 20, side: 0, nSigFigs: 5 })).resolves.toMatchObject({
+      coin: '#200',
+    })
+    await expect(kit.getOutcomeMids()).resolves.toEqual({
+      '#200': '0.733315',
+      '#201': '0.266685',
+    })
+
+    expect(getInfoBodies()).toEqual([
+      { type: 'l2Book', coin: '#200', nSigFigs: 5 },
+      { type: 'allMids' },
+    ])
+  })
+})
 
 describe('createUsdhKit', () => {
   it('binds the configured network', () => {

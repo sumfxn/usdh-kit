@@ -145,9 +145,10 @@ A few real flows the SDK is shaped for today. Runnable examples are still on the
 - `USDC → USDH` quote and swap via the canonical HL spot pair
 - HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
 - HyperCore balance, route/preflight helpers plus `bridgeAndSwap()` orchestration
+- Experimental read-only outcome market metadata, books, and mids
 - Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 - Approved Hyperliquid agent wallet flow for browser apps (`approveAgent`, `accountAddress`)
-- Read-only `InfoClient` (spotMeta, spot clearinghouse state, L2 book) for consumers building custom UIs
+- Read-only `InfoClient` (spotMeta, outcomeMeta, spot clearinghouse state, L2 book, allMids) for consumers building custom UIs
 - Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` for orchestration failures
 - `friendlyError()` helper to map SDK errors to short, copy-safe strings
 - React widget (`@usdh-kit/widget`) with light, dark and auto theming (WCAG AA defaults, CSS variables for integrator overrides)

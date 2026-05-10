@@ -1,7 +1,14 @@
 import { InvalidInputError, NetworkError } from '../errors.js'
 import type { Address } from '../types/hex.js'
 import type { Network } from '../types/network.js'
-import type { L2Book, SpotClearinghouseState, SpotMeta } from './types.js'
+import type {
+  L2Book,
+  OutcomeMeta,
+  OutcomeMetaQuestion,
+  OutcomeSideSpec,
+  SpotClearinghouseState,
+  SpotMeta,
+} from './types.js'
 
 const ENDPOINTS: Record<Network, string> = {
   mainnet: 'https://api.hyperliquid.xyz/info',
@@ -22,6 +29,7 @@ export type NSigFigs = 2 | 3 | 4 | 5
 
 export interface InfoClient {
   spotMeta(): Promise<SpotMeta>
+  outcomeMeta(): Promise<OutcomeMeta>
   l2Book(coin: string, nSigFigs?: NSigFigs): Promise<L2Book>
   spotClearinghouseState(user: Address): Promise<SpotClearinghouseState>
   /** Returns mid prices keyed by coin name (perps) or `@<spotIndex>` (spot). */
@@ -87,6 +95,9 @@ export function createInfoClient(config: InfoClientConfig): InfoClient {
     spotMeta() {
       return post<SpotMeta>({ type: 'spotMeta' })
     },
+    outcomeMeta() {
+      return post<unknown>({ type: 'outcomeMeta' }).then(assertOutcomeMeta)
+    },
     l2Book(coin, nSigFigs) {
       if (nSigFigs !== undefined && ![2, 3, 4, 5].includes(nSigFigs)) {
         throw new InvalidInputError('nSigFigs must be 2, 3, 4, or 5')
@@ -101,6 +112,94 @@ export function createInfoClient(config: InfoClientConfig): InfoClient {
     allMids() {
       return post<unknown>({ type: 'allMids' }).then(assertAllMids)
     },
+  }
+}
+
+function assertOutcomeMeta(data: unknown): OutcomeMeta {
+  const meta = data as { outcomes?: unknown; questions?: unknown }
+  if (!isRecord(data) || !Array.isArray(meta.outcomes)) {
+    throw new NetworkError('invalid outcomeMeta response')
+  }
+  const outcomes = meta.outcomes.map(assertOutcomeMetaOutcome)
+  const questionsRaw = meta.questions
+  if (questionsRaw !== undefined && !Array.isArray(questionsRaw)) {
+    throw new NetworkError('invalid outcomeMeta questions')
+  }
+  const questions = questionsRaw?.map(assertOutcomeMetaQuestion)
+  return questions === undefined ? { outcomes } : { outcomes, questions }
+}
+
+function assertOutcomeMetaOutcome(value: unknown): OutcomeMeta['outcomes'][number] {
+  if (!isRecord(value)) {
+    throw new NetworkError('invalid outcomeMeta outcome')
+  }
+  const outcomeRaw = value as {
+    outcome?: unknown
+    name?: unknown
+    description?: unknown
+    sideSpecs?: unknown
+  }
+  const outcome = outcomeRaw.outcome
+  const name = outcomeRaw.name
+  const description = outcomeRaw.description
+  const sideSpecs = outcomeRaw.sideSpecs
+  if (
+    !isSafeNonNegativeInteger(outcome) ||
+    typeof name !== 'string' ||
+    typeof description !== 'string' ||
+    !Array.isArray(sideSpecs) ||
+    sideSpecs.length !== 2
+  ) {
+    throw new NetworkError('invalid outcomeMeta outcome')
+  }
+  const yes = assertOutcomeSideSpec(sideSpecs[0])
+  const no = assertOutcomeSideSpec(sideSpecs[1])
+  return { outcome, name, description, sideSpecs: [yes, no] }
+}
+
+function assertOutcomeSideSpec(value: unknown): OutcomeSideSpec {
+  const sideSpec = value as { name?: unknown }
+  if (!isRecord(value) || typeof sideSpec.name !== 'string') {
+    throw new NetworkError('invalid outcomeMeta sideSpec')
+  }
+  return { name: sideSpec.name }
+}
+
+function assertOutcomeMetaQuestion(value: unknown): OutcomeMetaQuestion {
+  if (!isRecord(value)) {
+    throw new NetworkError('invalid outcomeMeta question')
+  }
+  const questionRaw = value as {
+    question?: unknown
+    name?: unknown
+    description?: unknown
+    fallbackOutcome?: unknown
+    namedOutcomes?: unknown
+    settledNamedOutcomes?: unknown
+  }
+  const question = questionRaw.question
+  const name = questionRaw.name
+  const description = questionRaw.description
+  const fallbackOutcome = questionRaw.fallbackOutcome
+  const namedOutcomes = questionRaw.namedOutcomes
+  const settledNamedOutcomes = questionRaw.settledNamedOutcomes
+  if (
+    !isSafeNonNegativeInteger(question) ||
+    typeof name !== 'string' ||
+    typeof description !== 'string' ||
+    !isSafeNonNegativeInteger(fallbackOutcome) ||
+    !isSafeIntegerArray(namedOutcomes) ||
+    !isSafeIntegerArray(settledNamedOutcomes)
+  ) {
+    throw new NetworkError('invalid outcomeMeta question')
+  }
+  return {
+    question,
+    name,
+    description,
+    fallbackOutcome,
+    namedOutcomes,
+    settledNamedOutcomes,
   }
 }
 
@@ -145,6 +244,14 @@ function isL2Level(value: unknown): boolean {
     typeof level.sz === 'string' &&
     typeof level.n === 'number'
   )
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+}
+
+function isSafeIntegerArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(isSafeNonNegativeInteger)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
