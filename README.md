@@ -55,8 +55,11 @@ pnpm add @usdh-kit/sdk
 For the React widget:
 
 ```sh
-pnpm add @usdh-kit/widget @usdh-kit/sdk wagmi viem @tanstack/react-query react react-dom
+pnpm add @usdh-kit/widget wagmi viem @tanstack/react-query react react-dom
 ```
+
+The widget depends on `@usdh-kit/sdk` internally. Install the SDK separately
+only when your app imports SDK APIs directly.
 
 ## SDK quickstart
 

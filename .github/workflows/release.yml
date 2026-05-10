@@ -15,7 +15,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.repository == 'sumfxn/usdh-kit'
+    if: github.repository == 'sumfxn/usdh-kit' && vars.RELEASES_ENABLED == 'true'
     permissions:
       contents: write
       pull-requests: write

@@ -1,6 +1,7 @@
 # Roadmap
 
-> Status: proposal.
+> Status: living plan. Track 1 spot discovery has landed; Track 2 outcome reads
+> are under review as an experimental read-only follow-up.
 > Direction: keep `usdh-kit` centered on USDH, but expand from "obtain USDH via
 > USDC" to "interact cleanly with USDH surfaces on Hyperliquid".
 
@@ -24,6 +25,7 @@ What already works:
 - HyperEVM -> HyperCore bridge for USDC
 - HyperCore balance reads and route/preflight helpers
 - `bridgeAndSwap()` for route -> optional bridge -> swap
+- USDH spot discovery with `listPairs`, `getPair`, `getBook`, and `getMids`
 - `InfoClient` reads for `spotMeta`, `spotClearinghouseState`, and `l2Book`
 - typed lifecycle errors, including `BridgeAndSwapError` and
   `isBridgeAndSwapError()`
@@ -35,6 +37,9 @@ path instead of forcing integrators into a broader trading abstraction.
 ## Track 1 - Discovery USDH
 
 Owner: @Yaugourt
+
+Status: landed for spot market discovery in PR #49. HIP-3 remains watchlist,
+and outcomes continue as the separate Track 2 surface.
 
 Expose the markets and surfaces related to USDH. Start with spot markets, keep
 outcomes clearly in scope, and keep HIP-3 as experimental/watchlist until the
@@ -73,7 +78,7 @@ type UsdhPair = {
 
 ### Scope
 
-- In scope now:
+- Shipped:
   - spot pairs where USDH is base or quote
   - book/mid helpers for those pairs
   - caching by pair name or token tuple
@@ -89,6 +94,10 @@ type UsdhPair = {
 ## Track 2 - Outcomes USDH
 
 Owner: @sumfxn
+
+Status: in review as PR #51. The proposed API is read-only and experimental:
+metadata, side encoding helpers, books, and mids only. It does not add outcome
+orders, cancellations, or settlement/denomination claims.
 
 Prioritize this if outcomes are natively denominated in USDH. This is a stronger
 USDH use case than generic perps because it creates direct demand for USDH as the
@@ -122,14 +131,14 @@ kit.placeOutcomeOrder({
 }): Promise<OrderResult>
 ```
 
-### First spike questions
+### Spike findings
 
-- What endpoint shape exposes outcome metadata today?
-- Are outcome markets represented like spot pairs, HIP-3 markets, or a separate
-  namespace?
-- Is USDH always the quote/settlement asset, or can it vary by market?
-- Are orders submitted through the same exchange action format as spot?
-- What minimal read-only support can ship before any write support?
+- `outcomeMeta` exposes a separate outcome namespace from spot pairs.
+- Side coins use encoded `#...` names derived from outcome id and binary side.
+- Live read-only probes validate `outcomeMeta`, `l2Book`, and outcome mids on
+  mainnet and testnet.
+- USDH settlement/denomination remains unclaimed until verified separately.
+- Write support remains out of scope.
 
 ## Track 3 - Targeted USDH trading
 
