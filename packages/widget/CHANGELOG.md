@@ -1,5 +1,15 @@
 # @usdh-kit/widget
 
+## 0.1.1
+
+### Patch Changes
+
+- c2eadbb: Add release safety guardrails, package licenses, and widget dependency metadata.
+- Updated dependencies [c2eadbb]
+- Updated dependencies [a9eb9ab]
+- Updated dependencies [ebb0029]
+  - @usdh-kit/sdk@0.3.0
+
 ## 0.1.0
 
 ### Minor Changes

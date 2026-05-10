@@ -4,7 +4,7 @@
 [![npm](https://img.shields.io/npm/v/@usdh-kit/sdk?style=flat&color=000000)](https://www.npmjs.com/package/@usdh-kit/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-000000.svg)](../../LICENSE)
 
-**Current SDK version:** `0.2.0`
+**Current SDK version:** `0.3.0`
 
 TypeScript SDK for USDH on Hyperliquid.
 
