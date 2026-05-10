@@ -5,8 +5,11 @@ Embeddable React widget for swapping stablecoins into USDH on Hyperliquid.
 ## Install
 
 ```sh
-pnpm add @usdh-kit/widget @usdh-kit/sdk wagmi viem @tanstack/react-query react react-dom
+pnpm add @usdh-kit/widget wagmi viem @tanstack/react-query react react-dom
 ```
+
+`@usdh-kit/sdk` is bundled as the widget's runtime dependency. Install the SDK
+separately only when your app imports SDK APIs directly.
 
 ## Usage
 

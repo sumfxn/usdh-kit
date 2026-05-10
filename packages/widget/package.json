@@ -57,11 +57,13 @@
   },
   "peerDependencies": {
     "@tanstack/react-query": ">=5",
-    "@usdh-kit/sdk": "workspace:*",
     "react": ">=18",
     "react-dom": ">=18",
     "viem": ">=2",
     "wagmi": ">=2"
+  },
+  "dependencies": {
+    "@usdh-kit/sdk": "workspace:^"
   },
   "devDependencies": {
     "@tanstack/react-query": "5.62.7",
@@ -69,7 +71,6 @@
     "@testing-library/react": "16.1.0",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.2",
-    "@usdh-kit/sdk": "workspace:*",
     "jsdom": "25.0.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
