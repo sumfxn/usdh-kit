@@ -141,7 +141,11 @@ The widget's `friendlyError(err)` helper maps these to short copy-safe strings (
 
 ## Transport
 
-`InfoClient` (`createInfoClient`) is exposed as a public export so consumers can build read-only UIs without re-implementing the wire format. Methods include `spotMeta()`, `spotClearinghouseState(user)`, `l2Book(coin)`. Server-friendly (works on Node, Bun, edge, browser).
+`InfoClient` (`createInfoClient`) is exposed as a public export so consumers can build read-only UIs without re-implementing the wire format. Methods include `spotMeta()`, `outcomeMeta()`, `spotClearinghouseState(user)`, `l2Book(coin)`, and `allMids()`. Server-friendly (works on Node, Bun, edge, browser).
+
+Outcome reads are experimental and read-only. The SDK validates `outcomeMeta`,
+derives encoded side coins like `#200`, and reuses the hardened `l2Book()` path
+for books. It does not place outcome orders or claim a settlement asset.
 
 `ExchangeClient` is internal — consumers should call `kit.swap()` rather than building actions themselves.
 
