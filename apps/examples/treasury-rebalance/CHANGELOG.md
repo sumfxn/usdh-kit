@@ -1,5 +1,12 @@
 # @usdh-kit-examples/treasury-rebalance
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [a9eb9ab]
+  - @usdh-kit/sdk@0.3.0
+
 ## 0.0.1
 
 ### Patch Changes
