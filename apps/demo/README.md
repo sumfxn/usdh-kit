@@ -18,12 +18,19 @@ Then open http://localhost:3000.
 The gallery is safe by default:
 
 - live data is read-only and server-side
+- live reads happen at request time, not during `next build`
 - no `/exchange` calls are made for gallery data
 - no wallet connection is required to render the page
 - if Hyperliquid reads fail, the page falls back to sample data
 
 The widget section remains interactive and uses the connected wallet only when a
 user explicitly starts the widget flow.
+
+## Stack note
+
+The demo uses Next.js 15 backport releases with React 18. Next 15 was already in
+the app before the gallery work; React 18 keeps the wallet stack aligned with
+ConnectKit's published peer dependencies.
 
 ## Validation
 

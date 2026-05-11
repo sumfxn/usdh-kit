@@ -8,9 +8,8 @@ const repoRoot = resolve(demoDir, '../..')
 
 const config: NextConfig = {
   reactStrictMode: true,
-  experimental: {
-    typedRoutes: true,
-  },
+  typedRoutes: true,
+  outputFileTracingRoot: repoRoot,
   webpack: (webpackConfig) => {
     webpackConfig.resolve ??= {}
     webpackConfig.resolve.extensionAlias = {

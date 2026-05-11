@@ -73,10 +73,23 @@ const SAMPLE_SNAPSHOT: GallerySnapshot = {
   notes: ['sample fallback', 'read-only only'],
 }
 
+const LIVE_TIMEOUT_MS = 2_000
+const LIVE_DEADLINE_MS = 2_500
+
 export async function loadGallerySnapshot(): Promise<GallerySnapshot> {
+  return withSnapshotDeadline(loadLiveGallerySnapshot(), LIVE_DEADLINE_MS)
+}
+
+async function loadLiveGallerySnapshot(): Promise<GallerySnapshot> {
   try {
-    const info = createInfoClient({ network: 'mainnet', timeoutMs: 3_500 })
-    const [spotMeta, mids] = await Promise.all([info.spotMeta(), info.allMids()])
+    const info = createInfoClient({ network: 'mainnet', timeoutMs: LIVE_TIMEOUT_MS })
+    const [spotMetaResult, midsResult] = await Promise.allSettled([info.spotMeta(), info.allMids()])
+    if (spotMetaResult.status === 'rejected') {
+      return sampleNow(['spotMeta unavailable'])
+    }
+
+    const spotMeta = spotMetaResult.value
+    const mids = midsResult.status === 'fulfilled' ? midsResult.value : {}
     const pairs = listUsdhSpotPairs(spotMeta)
     if (pairs.length === 0) return sampleNow(['no live USDH pairs returned'])
 
@@ -105,6 +118,7 @@ export async function loadGallerySnapshot(): Promise<GallerySnapshot> {
           : { ...SAMPLE_SNAPSHOT.book, coin: primaryPair.name },
       notes: [
         'mainnet read-only',
+        midsResult.status === 'fulfilled' ? 'mids live' : 'mids sample',
         outcomesResult.status === 'fulfilled' ? 'outcomes live' : 'outcomes sample',
         bookResult.status === 'fulfilled' ? 'book live' : 'book sample',
       ],
@@ -112,6 +126,22 @@ export async function loadGallerySnapshot(): Promise<GallerySnapshot> {
   } catch (err) {
     return sampleNow([err instanceof Error ? err.message : 'live data unavailable'])
   }
+}
+
+function withSnapshotDeadline(
+  promise: Promise<GallerySnapshot>,
+  timeoutMs: number,
+): Promise<GallerySnapshot> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<GallerySnapshot>((resolve) => {
+    timer = setTimeout(() => resolve(sampleNow(['live data timeout'])), timeoutMs)
+  })
+  return Promise.race([
+    promise.finally(() => {
+      if (timer !== undefined) clearTimeout(timer)
+    }),
+    timeout,
+  ])
 }
 
 function sampleNow(notes: string[]): GallerySnapshot {

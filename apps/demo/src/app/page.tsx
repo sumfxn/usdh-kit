@@ -23,7 +23,7 @@ import { ConnectButton } from '../components/ConnectButton'
 import { SwapSection } from '../components/SwapSection'
 import { type GalleryBookLevel, loadGallerySnapshot } from '../lib/gallery-data'
 
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
 
 const surfaces: Array<{
   title: string
@@ -119,7 +119,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-[#f7f7f6] text-neutral-950 dark:bg-[#080808] dark:text-neutral-50">
-      <div className="mx-4 flex min-w-0 max-w-[358px] flex-col gap-16 py-5 sm:mx-auto sm:w-full sm:max-w-7xl sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-[min(420px,calc(100vw-2rem))] min-w-0 flex-col gap-16 py-5 sm:w-full sm:max-w-7xl sm:px-6 lg:px-8">
         <header className="flex min-h-10 min-w-0 items-center justify-between gap-3">
           <a
             href="/"
@@ -347,7 +347,7 @@ export default async function Home() {
 
         <footer className="flex flex-col gap-3 border-t border-neutral-300 py-6 text-xs text-neutral-500 dark:border-neutral-800 sm:flex-row sm:items-center sm:justify-between">
           <span>Built by Sumfxn and Yaugourt for USDH builders.</span>
-          <span className="font-mono">no release from this gallery PR</span>
+          <span className="font-mono">release gated separately</span>
         </footer>
       </div>
     </main>
@@ -401,7 +401,7 @@ function SurfaceCard({
   icon: LucideIcon
 }) {
   return (
-    <div className="rounded-md border border-neutral-300 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
+    <div className="min-w-0 rounded-md border border-neutral-300 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
       <div className="flex items-center justify-between gap-3">
         <Icon className="h-4 w-4 text-neutral-500" />
         <span className="font-mono text-[11px] text-neutral-500">{eyebrow}</span>
@@ -447,6 +447,11 @@ function BookSide({
         {title}
       </div>
       <div className="space-y-2">
+        {levels.length === 0 ? (
+          <div className="rounded-md border border-dashed border-neutral-200 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-800">
+            No visible levels
+          </div>
+        ) : null}
         {levels.map((level, index) => (
           <div key={`${level.price}-${index}`} className="relative overflow-hidden rounded-md">
             <div
@@ -502,13 +507,13 @@ function PrimitiveCard({
   icon: LucideIcon
 }) {
   return (
-    <div className="rounded-md border border-neutral-300 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
+    <div className="min-w-0 rounded-md border border-neutral-300 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
       <Icon className="h-4 w-4 text-neutral-500" />
       <h3 className="mt-5 text-sm font-semibold">{title}</h3>
       <p className="mt-2 min-h-12 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
         {detail}
       </p>
-      <pre className="mt-4 overflow-x-auto rounded-md bg-neutral-100 p-3 text-xs leading-5 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+      <pre className="mt-4 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-neutral-100 p-3 text-xs leading-5 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
         <code>{code}</code>
       </pre>
     </div>
