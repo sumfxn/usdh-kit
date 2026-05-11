@@ -59,6 +59,8 @@ function stubInfo(states: SpotClearinghouseState[]): InfoClient {
       return s as SpotClearinghouseState
     }),
     allMids: vi.fn(),
+    frontendOpenOrders: vi.fn(),
+    orderStatus: vi.fn(),
   }
 }
 
@@ -199,6 +201,8 @@ describe('runBridgeToCore', () => {
       l2Book: vi.fn(),
       spotClearinghouseState: vi.fn(),
       allMids: vi.fn(),
+      frontendOpenOrders: vi.fn(),
+      orderStatus: vi.fn(),
     }
     await expect(
       runBridgeToCore(
@@ -394,6 +398,8 @@ describe('runBridgeToCore', () => {
         return calls < 4 ? stateWith('0') : stateWith('100')
       }),
       allMids: vi.fn(),
+      frontendOpenOrders: vi.fn(),
+      orderStatus: vi.fn(),
     }
     const wallet = stubWallet(`0x${'a'.repeat(64)}`)
     let t = 0

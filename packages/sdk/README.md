@@ -170,6 +170,28 @@ const outcomeMids = await kit.getOutcomeMids()
 console.log(market.name, yesBook.coin, outcomeMids[market.sides[0].coin])
 ```
 
+## Trade USDH spot pairs
+
+The order layer is scoped to USDH-bearing spot pairs. `pair` accepts the live
+`pair.name` returned by `listPairs()` (usually `@<spotIndex>`) or a token alias
+such as `USDH/USDC` or `HYPE/USDH`.
+
+```ts
+const order = await kit.placeOrder({
+  pair: 'USDH/USDC',
+  side: 'buy',
+  size: '10',
+  price: '1',
+})
+
+await kit.cancelOrder({ pair: 'USDH/USDC', oid: order.oid })
+
+const openOrders = await kit.getOpenOrders({ pair: 'USDH/USDC' })
+const status = await kit.getOrderStatus({ pair: 'USDH/USDC', oid: order.oid })
+
+console.log(openOrders.length, status.status)
+```
+
 ## Bridge and swap
 
 `bridgeAndSwap()` composes the common retail flow:
@@ -205,6 +227,7 @@ Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. 
 * `bridgeAndSwap()` high-level orchestration with progress callbacks
 * USDH spot market discovery and read-only books/mids for USDH pairs
 * Experimental read-only outcome market metadata, books, and mids
+* USDH-only spot order helpers for place, cancel, open orders, and order status
 * Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 * Read-only `InfoClient` (spotMeta, outcomeMeta, spot clearinghouse state, L2 book, allMids)
 * Typed error hierarchy rooted at `UsdhKitError`, including `BridgeAndSwapError` phase/cause context and `isBridgeAndSwapError()` narrowing

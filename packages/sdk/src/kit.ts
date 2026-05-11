@@ -15,6 +15,15 @@ import {
   NotImplementedError,
 } from './errors.js'
 import {
+  type CancelOrderInput,
+  type CancelOrderResult,
+  type GetOpenOrdersInput,
+  type GetOrderStatusInput,
+  type PlaceOrderInput,
+  type PlaceOrderResult,
+  createOrders,
+} from './orders.js'
+import {
   type GetOutcomeBookInput,
   type GetOutcomeMarketInput,
   type UsdhOutcomeMarket,
@@ -37,7 +46,7 @@ import {
   isOrderResponse,
 } from './transport/exchange.js'
 import { type InfoClient, type NSigFigs, createInfoClient } from './transport/info.js'
-import type { L2Book } from './transport/types.js'
+import type { L2Book, OpenOrder, OrderStatusResponse } from './transport/types.js'
 import type { BridgeInput, BridgeResult } from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
@@ -97,7 +106,7 @@ export interface UsdhKit {
   listPairs(opts?: ListUsdhPairsOpts): Promise<UsdhPair[]>
   /** Find one USDH-bearing spot pair by base/quote token names. */
   getPair(input: GetUsdhPairInput): Promise<UsdhPair>
-  /** Fetch the L2 book for a pair name (e.g. "USDH/USDC"). */
+  /** Fetch the L2 book for a live pair name, usually `@<spotIndex>`. */
   getBook(pair: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
   /** Fetch mid prices, optionally filtered to USDH-quote pairs. */
   getMids(opts?: GetMidsOpts): Promise<Record<string, string>>
@@ -109,6 +118,14 @@ export interface UsdhKit {
   getOutcomeBook(input: GetOutcomeBookInput): Promise<L2Book>
   /** Fetch mid prices keyed by encoded outcome side coin, e.g. `#200`. */
   getOutcomeMids(): Promise<Record<string, string>>
+  /** Place a USDH-pair spot order. Accepts `listPairs()` names or token aliases like `USDH/USDC`. */
+  placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult>
+  /** Cancel a resting USDH-pair order by oid. */
+  cancelOrder(input: CancelOrderInput): Promise<CancelOrderResult>
+  /** List the user's USDH-pair resting open orders, optionally filtered to one pair. */
+  getOpenOrders(input?: GetOpenOrdersInput): Promise<OpenOrder[]>
+  /** Fetch a single USDH-pair order's status by pair and oid. */
+  getOrderStatus(input: GetOrderStatusInput): Promise<OrderStatusResponse>
 }
 
 /**
@@ -141,6 +158,15 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     lastNonce = candidate
     return candidate
   }
+
+  const orders = createOrders({
+    info,
+    exchange,
+    signer: config.signer,
+    network: config.network,
+    accountAddress,
+    nextNonce,
+  })
 
   async function swap(input: SwapInput): Promise<SwapResult> {
     validateSwapInput(input)
@@ -331,6 +357,22 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     getOutcomeMids() {
       return outcomeDiscovery.getOutcomeMids()
+    },
+
+    placeOrder(input) {
+      return orders.placeOrder(input)
+    },
+
+    cancelOrder(input) {
+      return orders.cancelOrder(input)
+    },
+
+    getOpenOrders(input) {
+      return orders.getOpenOrders(input)
+    },
+
+    getOrderStatus(input) {
+      return orders.getOrderStatus(input)
     },
 
     async getQuote(input: QuoteInput): Promise<Quote> {

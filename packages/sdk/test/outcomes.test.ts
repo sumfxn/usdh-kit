@@ -39,6 +39,8 @@ function stubInfo(overrides: Partial<InfoClient> = {}): InfoClient {
     l2Book: vi.fn(async () => sampleBook),
     spotClearinghouseState: vi.fn(),
     allMids: vi.fn(async () => ({ '#200': '0.733315', '#201': '0.266685', BTC: '80657' })),
+    frontendOpenOrders: vi.fn(),
+    orderStatus: vi.fn(),
     ...overrides,
   }
 }

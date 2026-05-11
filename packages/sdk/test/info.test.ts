@@ -209,6 +209,80 @@ describe('allMids', () => {
   })
 })
 
+const sampleOpenOrder = {
+  coin: 'USDH/USDC',
+  side: 'B',
+  limitPx: '1.0001',
+  sz: '10',
+  origSz: '10',
+  oid: 91490942,
+  timestamp: 1681247412573,
+  reduceOnly: false,
+  orderType: 'Limit',
+  triggerCondition: 'N/A',
+  triggerPx: '0.0',
+  isPositionTpsl: false,
+  isTrigger: false,
+}
+
+describe('frontendOpenOrders', () => {
+  it('posts user and returns the parsed array', async () => {
+    const fetch = vi.fn(async () => jsonResponse([sampleOpenOrder]))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    const result = await client.frontendOpenOrders('0x000000000000000000000000000000000000abcd')
+    const [, init] = fetch.mock.calls[0] ?? []
+    expect(JSON.parse(init?.body as string)).toEqual({
+      type: 'frontendOpenOrders',
+      user: '0x000000000000000000000000000000000000abcd',
+    })
+    expect(result).toEqual([sampleOpenOrder])
+  })
+
+  it('rejects an invalid entry shape', async () => {
+    const fetch = vi.fn(async () => jsonResponse([{ ...sampleOpenOrder, side: 'X' }]))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    await expect(
+      client.frontendOpenOrders('0x000000000000000000000000000000000000abcd'),
+    ).rejects.toThrow(NetworkError)
+  })
+})
+
+describe('orderStatus', () => {
+  it('returns the parsed status detail', async () => {
+    const orderDetail = {
+      order: { ...sampleOpenOrder },
+      status: 'open',
+      statusTimestamp: 1724361546645,
+    }
+    const fetch = vi.fn(async () => jsonResponse({ status: 'order', order: orderDetail }))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    const result = await client.orderStatus('0x000000000000000000000000000000000000abcd', 91490942)
+    const [, init] = fetch.mock.calls[0] ?? []
+    expect(JSON.parse(init?.body as string)).toEqual({
+      type: 'orderStatus',
+      user: '0x000000000000000000000000000000000000abcd',
+      oid: 91490942,
+    })
+    expect(result).toEqual({ status: 'order', order: orderDetail })
+  })
+
+  it('returns the unknownOid sentinel as-is', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ status: 'unknownOid' }))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    const result = await client.orderStatus('0x000000000000000000000000000000000000abcd', 999)
+    expect(result).toEqual({ status: 'unknownOid' })
+  })
+
+  it('rejects a negative oid synchronously', () => {
+    const fetch = vi.fn(async () => jsonResponse({ status: 'unknownOid' }))
+    const client = createInfoClient({ network: 'mainnet', fetch })
+    expect(() => client.orderStatus('0x000000000000000000000000000000000000abcd', -1)).toThrow(
+      InvalidInputError,
+    )
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('error handling', () => {
   it('wraps non-2xx HTTP status in NetworkError', async () => {
     const fetch = vi.fn(async () => new Response('rate limited', { status: 429 }))

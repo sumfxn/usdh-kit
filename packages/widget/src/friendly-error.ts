@@ -15,7 +15,7 @@ const VIEM_USER_REJECTED_NAMES = new Set([
   'UserRejectedRequestErrorType',
 ])
 
-const HL_PROTOCOL_PREFIX = /^(HL error|exchange error|order error)/i
+const HL_PROTOCOL_PREFIX = /^(HL error|exchange error|order error|cancel error)/i
 
 /**
  * Map an unknown error from the SDK or the wallet provider into a short,
