@@ -1,7 +1,8 @@
 # Roadmap
 
-> Status: living plan. Tracks 1-3 have landed; Track 4 useful USDH flows are in
-> draft PR #56. Release remains intentionally gated until live testnet/IRL
+> Status: living plan. Tracks 1-4 have landed. Track 5 HyperEVM direct swap is
+> paused as a later spike until liquidity, routing, allowance, and failure modes
+> are validated. Release remains intentionally gated until live testnet/IRL
 > validation and generated release output are reviewed.
 > Direction: keep `usdh-kit` centered on USDH, but expand from "obtain USDH via
 > USDC" to "interact cleanly with USDH surfaces on Hyperliquid".
@@ -38,12 +39,9 @@ What already works:
   `isBridgeAndSwapError()`
 - React widget on top of the SDK
 
-In review:
-
-- Track 4 draft PR #56 adds `USDH -> USDC` HyperCore reverse swaps and
-  `bridgeFromCore()` for linked USDC/USDH spot assets. The PR has local and CI
-  validation, plus live read-only mainnet/testnet probes, but no live write-path
-  bridge/swap test yet.
+- `USDH -> USDC` HyperCore reverse swaps
+- `bridgeFromCore()` for linked USDC/USDH spot assets moving from HyperCore to
+  HyperEVM
 
 This remains the core retail path. New roadmap items should preserve that simple
 path instead of forcing integrators into a broader trading abstraction.
@@ -199,8 +197,9 @@ lower-level order API in docs.
 
 ## Track 4 - Useful USDH flows
 
-Status: in draft PR #56. Reverse swap and bridge-out are implemented in the SDK
-with conservative constraints, but should remain unmerged until review is done.
+Status: landed in PR #56. Reverse swap and bridge-out are implemented in the SDK
+with conservative constraints. No live write-path bridge/swap test has been run
+yet, so release remains gated on IRL validation.
 
 Keep the UX simple:
 
@@ -255,7 +254,7 @@ Do not block shipped tracks on this.
 
 ## Landed Split
 
-The initial SDK expansion landed as three focused PRs:
+The initial SDK expansion landed as four focused PRs:
 
 1. @Yaugourt: Track 1, Discovery USDH
    - spot USDH market discovery first
@@ -275,9 +274,7 @@ The initial SDK expansion landed as three focused PRs:
    - live pair names plus token-pair aliases
    - no generic Hyperliquid account/order surface
 
-Track 4 is currently in review as PR #56:
-
-- @sumfxn: Useful USDH flows
+4. @sumfxn: Track 4, Useful USDH flows
   - `USDH -> USDC` reverse swap on HyperCore
   - `bridgeFromCore()` for linked USDC/USDH spot assets
   - no arbitrary bridge-out recipient
