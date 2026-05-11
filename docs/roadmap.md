@@ -1,8 +1,8 @@
 # Roadmap
 
-> Status: living plan. Tracks 1-3 have landed; Track 4 useful USDH flows are
-> the next SDK expansion. Release remains intentionally gated until live
-> testnet/IRL validation and generated release output are reviewed.
+> Status: living plan. Tracks 1-3 have landed; Track 4 useful USDH flows are in
+> draft PR #56. Release remains intentionally gated until live testnet/IRL
+> validation and generated release output are reviewed.
 > Direction: keep `usdh-kit` centered on USDH, but expand from "obtain USDH via
 > USDC" to "interact cleanly with USDH surfaces on Hyperliquid".
 
@@ -37,6 +37,13 @@ What already works:
 - typed lifecycle errors, including `BridgeAndSwapError` and
   `isBridgeAndSwapError()`
 - React widget on top of the SDK
+
+In review:
+
+- Track 4 draft PR #56 adds `USDH -> USDC` HyperCore reverse swaps and
+  `bridgeFromCore()` for linked USDC/USDH spot assets. The PR has local and CI
+  validation, plus live read-only mainnet/testnet probes, but no live write-path
+  bridge/swap test yet.
 
 This remains the core retail path. New roadmap items should preserve that simple
 path instead of forcing integrators into a broader trading abstraction.
@@ -192,6 +199,9 @@ lower-level order API in docs.
 
 ## Track 4 - Useful USDH flows
 
+Status: in draft PR #56. Reverse swap and bridge-out are implemented in the SDK
+with conservative constraints, but should remain unmerged until review is done.
+
 Keep the UX simple:
 
 - `USDC -> USDH` remains the core path
@@ -203,8 +213,20 @@ Keep the UX simple:
 
 ```ts
 kit.swap({ from: 'USDH', to: 'USDC', amount, ... })
-kit.bridgeFromCore({ asset: 'USDC' | 'USDH', amount, recipient? })
+kit.bridgeFromCore({ asset: 'USDC' | 'USDH', amount })
 ```
+
+Implementation notes from PR #56:
+
+- `USDH -> USDC` is HyperCore-only. HyperEVM direct swap stays a separate
+  Track 5 spike.
+- `bridgeFromCore()` uses Hyperliquid `sendAsset` to the token system address.
+- The HyperEVM recipient is the Core action sender, so v1 does not expose an
+  arbitrary `recipient`.
+- Approved agent wallets cannot bridge funds out for a master account;
+  `signer.address` must match `accountAddress`.
+- Live validation for #56 is read-only only: mainnet/testnet `spotMeta`,
+  `l2Book`, SDK `getQuote()`, and SDK `getRoute()`.
 
 Multi-hop via arbitrary intermediate assets should stay out of scope until there
 is a clear product need and enough tests to make route selection safe.
@@ -253,6 +275,14 @@ The initial SDK expansion landed as three focused PRs:
    - live pair names plus token-pair aliases
    - no generic Hyperliquid account/order surface
 
+Track 4 is currently in review as PR #56:
+
+- @sumfxn: Useful USDH flows
+  - `USDH -> USDC` reverse swap on HyperCore
+  - `bridgeFromCore()` for linked USDC/USDH spot assets
+  - no arbitrary bridge-out recipient
+  - no HyperEVM direct swap or arbitrary multi-hop routing
+
 ## Non-goals
 
 - Becoming a generic Hyperliquid SDK
@@ -269,11 +299,11 @@ Resolved decisions:
 2. Outcomes use separate `listOutcomeMarkets()` style APIs.
 3. Track 3 supports only USDH-bearing spot pairs, not generic Hyperliquid
    trading.
+4. `bridgeFromCore()` v1 is sender-owned only; no arbitrary recipient.
 
 Open questions:
 
 1. Which API should expose HIP-3 USDH markets, if any? Proposed: experimental
    watchlist after spot/outcomes.
-2. What is the minimum useful `bridgeFromCore` API for integrators?
-3. Which examples should become first-class maintained demos before the next
+2. Which examples should become first-class maintained demos before the next
    release?
