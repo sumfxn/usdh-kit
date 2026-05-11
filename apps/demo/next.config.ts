@@ -23,6 +23,7 @@ const config: NextConfig = {
       '@usdh-kit/sdk$': resolve(repoRoot, 'packages/sdk/src/index.ts'),
       '@usdh-kit/widget$': resolve(repoRoot, 'packages/widget/src/index.ts'),
       '@usdh-kit/widget/styles.css$': resolve(repoRoot, 'packages/widget/src/styles.css'),
+      'pino-pretty': false,
     }
     return webpackConfig
   },
