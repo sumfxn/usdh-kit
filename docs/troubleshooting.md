@@ -16,6 +16,13 @@ const kit = createUsdhKit({
 })
 ```
 
+### `InvalidInputError: bridgeFromCore requires signer.address to match accountAddress`
+
+`bridgeFromCore()` signs a user-owned HyperCore `sendAsset` action. Approved
+agent wallets are useful for spot orders, but they cannot bridge funds out for a
+master account. Create a separate kit with the master wallet as `signer` before
+calling `bridgeFromCore()`.
+
 Browser apps that use an approved agent should also pass `accountAddress` so bridge ownership and balance reads stay tied to the master wallet:
 
 ```ts

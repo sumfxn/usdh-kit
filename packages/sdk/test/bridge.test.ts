@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { evmToCoreUnits, runBridgeToCore, tokenSystemAddress } from '../src/bridge.js'
+import {
+  evmToCoreUnits,
+  runBridgeFromCore,
+  runBridgeToCore,
+  tokenSystemAddress,
+} from '../src/bridge.js'
 import {
   BridgeTimeoutError,
   InvalidInputError,
@@ -11,6 +16,7 @@ import type { InfoClient } from '../src/transport/info.js'
 import type { SpotClearinghouseState, SpotMeta } from '../src/transport/types.js'
 import type { EvmWallet } from '../src/types/evm-wallet.js'
 import { silentLogger } from '../src/types/logger.js'
+import type { Signer } from '../src/types/signer.js'
 
 const usdcEvmContract = '0x6b9e773128f453f5c2c60935ee2de2cbc5390a24'
 const nativeUsdc = '0xb88339cb7199b77e23db6e890353e22632ba630f'
@@ -47,6 +53,17 @@ function stateWith(usdcTotal: string): SpotClearinghouseState {
   }
 }
 
+function stateWithToken(
+  coin: string,
+  token: number,
+  total: string,
+  hold = '0',
+): SpotClearinghouseState {
+  return {
+    balances: [{ coin, token, total, hold, entryNtl: '0' }],
+  }
+}
+
 function stubInfo(states: SpotClearinghouseState[]): InfoClient {
   let i = 0
   return {
@@ -73,6 +90,20 @@ function stubWallet(txHash = `0x${'f'.repeat(64)}`): EvmWallet & { calls: unknow
       return txHash as `0x${string}`
     },
     calls,
+  }
+}
+
+function stubSigner(address = '0x0000000000000000000000000000000000000abc'): Signer {
+  return {
+    address: address as `0x${string}`,
+    signTypedData: vi.fn(async () => `0x${'1'.repeat(64)}${'2'.repeat(64)}1b` as const),
+    signMessage: vi.fn(),
+  }
+}
+
+function stubExchange(response: unknown = { type: 'default' }) {
+  return {
+    submit: vi.fn(async () => ({ status: 'ok' as const, response })),
   }
 }
 
@@ -436,5 +467,151 @@ describe('runBridgeToCore', () => {
         },
       ),
     ).rejects.toBeInstanceOf(InvalidInputError)
+  })
+})
+
+describe('runBridgeFromCore', () => {
+  const baseUser = '0x0000000000000000000000000000000000000abc' as const
+
+  it('submits a signed sendAsset action to the token system address', async () => {
+    const signer = stubSigner(baseUser)
+    const exchange = stubExchange()
+    const result = await runBridgeFromCore(
+      { asset: 'USDH', amount: 1_250_000n },
+      {
+        info: stubInfo([stateWithToken('USDH', 360, '2')]),
+        exchange,
+        signer,
+        network: 'mainnet',
+        logger: silentLogger,
+        accountAddress: baseUser,
+        now: () => 1_775_000_000_000,
+      },
+    )
+
+    expect(signer.signTypedData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: expect.objectContaining({
+          name: 'HyperliquidSignTransaction',
+          chainId: 0x66eee,
+        }),
+        primaryType: 'HyperliquidTransaction:SendAsset',
+        message: expect.objectContaining({
+          hyperliquidChain: 'Mainnet',
+          destination: '0x2000000000000000000000000000000000000168',
+          sourceDex: 'spot',
+          destinationDex: 'spot',
+          token: 'USDH:0xbbbb',
+          amount: '1.25',
+          fromSubAccount: '',
+          nonce: 1_775_000_000_000,
+        }),
+      }),
+    )
+    expect(exchange.submit).toHaveBeenCalledWith({
+      action: expect.objectContaining({
+        type: 'sendAsset',
+        signatureChainId: '0x66eee',
+        destination: '0x2000000000000000000000000000000000000168',
+        token: 'USDH:0xbbbb',
+        amount: '1.25',
+        nonce: 1_775_000_000_000,
+      }),
+      signature: { r: `0x${'1'.repeat(64)}`, s: `0x${'2'.repeat(64)}`, v: 27 },
+      nonce: 1_775_000_000_000n,
+    })
+    expect(result).toEqual({
+      asset: 'USDH',
+      amount: 1_250_000n,
+      systemAddress: '0x2000000000000000000000000000000000000168',
+      recipient: baseUser,
+      submittedAt: 1_775_000_000_000,
+    })
+  })
+
+  it('uses the Circle-compatible bare USDC token for Core -> HyperEVM withdraws', async () => {
+    const signer = stubSigner(baseUser)
+    const exchange = stubExchange()
+    await runBridgeFromCore(
+      { asset: 'USDC', amount: 1_500_000n },
+      {
+        info: stubInfo([stateWithToken('USDC', 0, '2')]),
+        exchange,
+        signer,
+        network: 'testnet',
+        logger: silentLogger,
+        accountAddress: baseUser,
+        now: () => 1_775_000_000_001,
+      },
+    )
+
+    expect(exchange.submit).toHaveBeenCalledWith({
+      action: expect.objectContaining({
+        type: 'sendAsset',
+        hyperliquidChain: 'Testnet',
+        destination: '0x2000000000000000000000000000000000000000',
+        sourceDex: 'spot',
+        destinationDex: 'spot',
+        token: 'USDC',
+        amount: '1.5',
+      }),
+      signature: { r: `0x${'1'.repeat(64)}`, s: `0x${'2'.repeat(64)}`, v: 27 },
+      nonce: 1_775_000_000_001n,
+    })
+  })
+
+  it('rejects agent-style accountAddress mismatch', async () => {
+    await expect(
+      runBridgeFromCore(
+        { asset: 'USDC', amount: 1_000_000n },
+        {
+          info: stubInfo([stateWith('10')]),
+          exchange: stubExchange(),
+          signer: stubSigner('0x0000000000000000000000000000000000000abc'),
+          network: 'mainnet',
+          logger: silentLogger,
+          accountAddress: '0x0000000000000000000000000000000000000def',
+        },
+      ),
+    ).rejects.toThrow(/signer.address to match accountAddress/)
+  })
+
+  it('rejects insufficient HyperCore balance before signing', async () => {
+    const signer = stubSigner(baseUser)
+    const exchange = stubExchange()
+    await expect(
+      runBridgeFromCore(
+        { asset: 'USDC', amount: 2_000_000n },
+        {
+          info: stubInfo([stateWithToken('USDC', 0, '1')]),
+          exchange,
+          signer,
+          network: 'mainnet',
+          logger: silentLogger,
+          accountAddress: baseUser,
+        },
+      ),
+    ).rejects.toMatchObject({ name: 'InsufficientBalanceError' })
+    expect(signer.signTypedData).not.toHaveBeenCalled()
+    expect(exchange.submit).not.toHaveBeenCalled()
+  })
+
+  it('surfaces exchange errors from sendAsset', async () => {
+    const exchange = {
+      submit: vi.fn(async () => ({ status: 'err' as const, response: 'rate limited' })),
+    }
+    await expect(
+      runBridgeFromCore(
+        { asset: 'USDC', amount: 1_000_000n },
+        {
+          info: stubInfo([stateWithToken('USDC', 0, '2')]),
+          exchange,
+          signer: stubSigner(baseUser),
+          network: 'mainnet',
+          logger: silentLogger,
+          accountAddress: baseUser,
+        },
+      ),
+    ).rejects.toThrow(/exchange error: rate limited/)
   })
 })

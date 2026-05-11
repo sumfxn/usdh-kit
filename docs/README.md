@@ -2,20 +2,21 @@
 
 TypeScript SDK and React widget for USDH on Hyperliquid.
 
-`usdh-kit` helps apps convert USDC into USDH without reimplementing Hyperliquid spot routing, EIP-712 order signing, HyperEVM bridge transactions, or bridge-credit polling.
+`usdh-kit` helps apps work with USDH without reimplementing Hyperliquid spot discovery, EIP-712 order signing, HyperEVM bridge transactions, or bridge-credit polling.
 
 ## Packages
 
 | Package | Purpose |
 |---|---|
-| `@usdh-kit/sdk` | Quote, route, bridge, and swap `USDC -> USDH`. |
+| `@usdh-kit/sdk` | Quote, route, bridge, and swap USDH-focused flows. |
 | `@usdh-kit/widget` | Embeddable React swap widget built on the SDK. |
 
 ## What works today
 
-* Quote and swap `USDC -> USDH` on the canonical Hyperliquid spot pair.
+* Quote and swap `USDC -> USDH` and `USDH -> USDC` on the canonical Hyperliquid spot pair.
 * Route from existing HyperCore USDC when available.
 * Bridge USDC from HyperEVM to HyperCore, wait for credit, then swap.
+* Bridge linked USDC/USDH spot assets from HyperCore back to HyperEVM.
 * Use approved Hyperliquid agent wallets so browser apps do not ask Rabby or other injected wallets to sign L1 order payloads directly.
 * Display HyperEVM and HyperCore balances for USDC and USDH in the widget.
 

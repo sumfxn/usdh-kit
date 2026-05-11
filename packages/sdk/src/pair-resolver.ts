@@ -13,6 +13,8 @@ export interface ResolvedPair {
   tokens: [number, number]
   /** Base token size decimals (HL `szDecimals`). */
   baseSzDecimals: number
+  /** Base token wei decimals (HL `weiDecimals` of the base token). */
+  baseWeiDecimals: number
   /** Quote token wei decimals (HL `weiDecimals` of the quote token). */
   quoteWeiDecimals: number
 }
@@ -51,6 +53,7 @@ export function findUsdhUsdcPair(meta: SpotMeta): ResolvedPair {
     assetIndex: SPOT_ASSET_OFFSET + pair.index,
     tokens: pair.tokens,
     baseSzDecimals: baseToken.szDecimals,
+    baseWeiDecimals: baseToken.weiDecimals,
     quoteWeiDecimals: quoteToken.weiDecimals,
   }
 }

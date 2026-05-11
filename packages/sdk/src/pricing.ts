@@ -62,6 +62,14 @@ export function applyPriceInverse(amount: bigint, pricePerBase18: bigint): bigin
   return (amount * TEN_18) / pricePerBase18
 }
 
+/** Convert a base-token amount to quote-token amount at a quote-per-base price. */
+export function applyPrice(amount: bigint, pricePerBase18: bigint): bigint {
+  if (pricePerBase18 <= 0n) {
+    throw new InvalidInputError('price must be positive')
+  }
+  return (amount * pricePerBase18) / TEN_18
+}
+
 /**
  * Format a fixed-point bigint as a decimal string with no trailing zeros.
  * `formatDecimal(1_000_100n, 6)` -> "1.0001". Returns "0" for zero.

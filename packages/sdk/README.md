@@ -18,8 +18,9 @@ Pre-release. Public API is unstable until `1.0.0`.
 
 What works today:
 
-* `getQuote()` and `swap()` for `USDC → USDH` end to end (signing + msgpack + IOC limit submission)
+* `getQuote()` and `swap()` for `USDC → USDH` and `USDH → USDC` end to end (signing + msgpack + IOC limit submission)
 * `bridgeToCore()` for moving USDC from HyperEVM to HyperCore, with credit polling
+* `bridgeFromCore()` for moving linked USDC/USDH spot assets from HyperCore to HyperEVM
 * `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 * `getRoute()` / `preflightSwap()` for HyperCore-vs-HyperEVM source selection
 * `bridgeAndSwap()` for route → optional bridge → swap orchestration
@@ -27,7 +28,7 @@ What works today:
 * Experimental read-only outcome market metadata, books, and mids
 * Read-only `InfoClient` (spotMeta, outcomeMeta, spotClearinghouseState, L2 book, allMids)
 
-Deferred to follow-up PRs: USDT pricing/swap, reverse direction (USDH → USDC), multi-chain source.
+Deferred to follow-up PRs: USDT pricing/swap and multi-chain source.
 
 ## Install
 
@@ -62,10 +63,10 @@ try {
 }
 ```
 
-`swap()` submits an IOC limit order priced `slippageBps` above the mid (max
-slippage is enforced pre-fill by Hyperliquid's matcher). The returned
-`result.slippageBps` is the realised slippage versus mid; tighten the tolerance
-and retry if it's higher than you expected.
+`swap()` submits an IOC limit order priced from the book mid plus/minus
+`slippageBps` depending on direction. The returned `result.slippageBps` is the
+realised slippage versus mid; tighten the tolerance and retry if it's higher
+than you expected.
 
 ## Agent wallets
 
@@ -107,11 +108,18 @@ if (Date.now() < quote.validUntil) {
   console.log(`mid-price on ${quote.pair}: ${quote.midPrice}`)
   console.log(`would receive ~${quote.estimatedReceived} USDH`)
 }
+
+const reverse = await kit.getQuote({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
+console.log(`would receive ~${reverse.estimatedReceived} USDC`)
 ```
 
 ## Route and preflight
 
-`getHypercoreBalance()` returns total, held, and spendable HyperCore balance for a source stable. `getRoute()` decides whether the user can swap directly from HyperCore or needs to bridge from HyperEVM first. It checks spendable HyperCore source balance (`total - hold`), applies the configured slippage plus a small HC fee buffer, and returns a quote alongside the route decision.
+`getHypercoreBalance()` returns total, held, and spendable HyperCore balance for
+a source stable. `getRoute()` decides whether `USDC -> USDH` can swap directly
+from HyperCore or needs to bridge from HyperEVM first. `USDH -> USDC` is
+HyperCore-only: bridge USDH to HyperCore first, swap, then call
+`bridgeFromCore()` if you need the resulting USDC on HyperEVM.
 
 ```ts
 const balance = await kit.getHypercoreBalance({ asset: 'USDC' })
@@ -131,6 +139,27 @@ if (route.requiresBridge) {
 `getRoute()` does not inspect the user's HyperEVM ERC20 balance. If it selects
 the bridge route, `canSwap` only means the kit has an `evmWallet` configured;
 the wallet/RPC will still reject an underfunded bridge transaction.
+
+## Reverse swap and bridge out
+
+`USDH -> USDC` uses the same `USDH/USDC` spot pair, but sells USDH instead of
+buying it. It is intentionally HyperCore-only.
+
+```ts
+const sold = await kit.swap({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
+console.log(`got ${sold.received} USDC`)
+```
+
+`bridgeFromCore()` sends linked spot assets from HyperCore to their token system
+address. Hyperliquid credits the EVM recipient as the sender of the Core action,
+so this helper requires the configured signer to be the master account
+(`signer.address === accountAddress`); approved agent wallets cannot withdraw
+Core funds for another account.
+
+```ts
+const out = await kit.bridgeFromCore({ asset: 'USDC', amount: sold.received })
+console.log(out.systemAddress, out.submittedAt)
+```
 
 ## Discover USDH spot markets
 
@@ -223,6 +252,8 @@ Unexpected route, bridge, or swap failures are wrapped in `BridgeAndSwapError`. 
 
 * `USDC → USDH` quote and swap via the canonical HL spot pair
 * HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
+* HyperCore → HyperEVM bridge-out for linked USDC/USDH spot assets (`bridgeFromCore`)
+* `USDH → USDC` reverse swap on HyperCore
 * `getRoute()` / `preflightSwap()` route selection and preflight metadata
 * `bridgeAndSwap()` high-level orchestration with progress callbacks
 * USDH spot market discovery and read-only books/mids for USDH pairs

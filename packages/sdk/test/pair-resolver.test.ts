@@ -35,6 +35,7 @@ describe('findUsdhUsdcPair', () => {
       assetIndex: 10230,
       tokens: [1, 0],
       baseSzDecimals: 8,
+      baseWeiDecimals: 8,
       quoteWeiDecimals: 8,
     })
   })

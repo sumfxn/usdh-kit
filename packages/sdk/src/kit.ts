@@ -1,4 +1,4 @@
-import { runBridgeToCore } from './bridge.js'
+import { runBridgeFromCore, runBridgeToCore } from './bridge.js'
 import {
   type GetMidsOpts,
   type GetUsdhPairInput,
@@ -31,6 +31,7 @@ import {
 } from './outcomes.js'
 import { type ResolvedPair, createPairResolver } from './pair-resolver.js'
 import {
+  applyPrice,
   applyPriceInverse,
   formatDecimal,
   formatSpotPrice,
@@ -47,7 +48,12 @@ import {
 } from './transport/exchange.js'
 import { type InfoClient, type NSigFigs, createInfoClient } from './transport/info.js'
 import type { L2Book, OpenOrder, OrderStatusResponse } from './transport/types.js'
-import type { BridgeInput, BridgeResult } from './types/bridge.js'
+import type {
+  BridgeFromCoreInput,
+  BridgeFromCoreResult,
+  BridgeInput,
+  BridgeResult,
+} from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
 import { silentLogger } from './types/logger.js'
@@ -60,10 +66,11 @@ import type {
   QuoteInput,
   RouteInput,
   SourceChain,
-  SourceStable,
+  SwapAsset,
   SwapInput,
   SwapResult,
   SwapRoute,
+  TargetStable,
 } from './types/swap.js'
 
 const DEFAULT_SLIPPAGE_BPS = 20
@@ -102,6 +109,12 @@ export interface UsdhKit {
    * timeout 180s). Requires `KitConfig.evmWallet`.
    */
   bridgeToCore(input: BridgeInput): Promise<BridgeResult>
+  /**
+   * Bridge a linked spot asset from HyperCore to HyperEVM by sending it to the
+   * token's system address. Requires the configured signer to be the master
+   * account because the HyperEVM recipient is the sender of the Core action.
+   */
+  bridgeFromCore(input: BridgeFromCoreInput): Promise<BridgeFromCoreResult>
   /** List USDH-bearing spot pairs from `spotMeta`. Cached after the first call. */
   listPairs(opts?: ListUsdhPairsOpts): Promise<UsdhPair[]>
   /** Find one USDH-bearing spot pair by base/quote token names. */
@@ -170,15 +183,19 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
   async function swap(input: SwapInput): Promise<SwapResult> {
     validateSwapInput(input)
+    const direction = resolveSwapDirection(input)
     const slippageBps = input.slippageBps ?? defaultSlippageBps
-    if (input.from === 'USDT') {
+    if (direction.from === 'USDT') {
       throw new NotImplementedError('USDT swap lands in a follow-up PR')
     }
     if (input.amount < MIN_ORDER_SOURCE_AMOUNT) {
-      throw new InvalidInputError('amount must be greater than 10 USDC for Hyperliquid spot orders')
+      throw new InvalidInputError(
+        `amount must be greater than 10 ${direction.from} for Hyperliquid spot orders`,
+      )
     }
     logger.debug('swap.requested', {
-      from: input.from,
+      from: direction.from,
+      to: direction.to,
       amount: input.amount.toString(),
       slippageBps,
     })
@@ -187,16 +204,21 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     const book = await info.l2Book(pair.name)
     const mid = midPrice18(book)
 
-    const limitPrice18 = (mid * (10_000n + BigInt(slippageBps))) / 10_000n
+    const limitPrice18 =
+      direction.side === 'buy'
+        ? (mid * (10_000n + BigInt(slippageBps))) / 10_000n
+        : (mid * (10_000n - BigInt(slippageBps))) / 10_000n
     const limitPriceStr = formatSpotPrice(limitPrice18, pair.baseSzDecimals)
-    const wireLimitPrice18 = parseDecimal(limitPriceStr, PRICE_DECIMALS)
-    const sizeUsdh = applyPriceInverse(input.amount, wireLimitPrice18)
+    const sizeUsdh =
+      direction.side === 'buy'
+        ? applyPriceInverse(input.amount, parseDecimal(limitPriceStr, PRICE_DECIMALS))
+        : input.amount
     if (sizeUsdh === 0n) {
       throw new InvalidInputError('amount too small to fill at the slippage-tolerant limit')
     }
     const sizeStr = formatDecimal(sizeUsdh, STABLE_DECIMALS, pair.baseSzDecimals)
 
-    const action = buildOrderAction(pair, limitPriceStr, sizeStr)
+    const action = buildOrderAction(pair, direction.side, limitPriceStr, sizeStr)
     const nonce = nextNonce()
     const expiresAfter = nonce + ORDER_EXPIRES_AFTER_MS
 
@@ -228,7 +250,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       throw new NetworkError('exchange returned no order status')
     }
 
-    return finalizeFill(status, mid, logger)
+    return finalizeFill(status, mid, direction, logger)
   }
 
   return {
@@ -236,7 +258,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     swap,
 
     async getHypercoreBalance(input: HypercoreBalanceInput): Promise<HypercoreBalance> {
-      assertSourceStable(input.asset)
+      assertBalanceAsset(input.asset)
       const meta = await info.spotMeta()
       const token = meta.tokens.find((t) => t.name === input.asset)
       if (!token) {
@@ -280,7 +302,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
         try {
           bridge = await runBridgeToCore(
             {
-              asset: input.from,
+              asset: route.from as BridgeInput['asset'],
               amount: input.amount,
               user: accountAddress,
               ...(input.waitForCreditTimeoutMs !== undefined && {
@@ -325,6 +347,17 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
           logger,
         },
       )
+    },
+
+    async bridgeFromCore(input: BridgeFromCoreInput): Promise<BridgeFromCoreResult> {
+      return runBridgeFromCore(input, {
+        info,
+        exchange,
+        signer: config.signer,
+        network: config.network,
+        logger,
+        accountAddress,
+      })
     },
 
     listPairs(opts) {
@@ -377,18 +410,25 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     async getQuote(input: QuoteInput): Promise<Quote> {
       validateQuoteInput(input)
-      if (input.from === 'USDT') {
+      const direction = resolveSwapDirection(input)
+      if (direction.from === 'USDT') {
         throw new NotImplementedError('USDT pricing lands in a follow-up PR')
       }
       logger.debug('quote.requested', {
-        from: input.from,
+        from: direction.from,
+        to: direction.to,
         amount: input.amount.toString(),
       })
       const pair = await resolvePair()
       const book = await info.l2Book(pair.name)
       const midPrice = midPrice18(book)
-      const estimatedReceived = applyPriceInverse(input.amount, midPrice)
+      const estimatedReceived =
+        direction.side === 'buy'
+          ? applyPriceInverse(input.amount, midPrice)
+          : applyPrice(input.amount, midPrice)
       return {
+        from: direction.from,
+        to: direction.to,
         estimatedReceived,
         midPrice,
         pair: pair.name,
@@ -399,8 +439,12 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
   async function getRoute(input: RouteInput): Promise<SwapRoute> {
     validateRouteInput(input)
-    if (input.from === 'USDT') {
+    const direction = resolveSwapDirection(input)
+    if (direction.from === 'USDT') {
       throw new NotImplementedError('USDT routing lands in a follow-up PR')
+    }
+    if (direction.side === 'sell' && input.sourceChain === 'hyperevm') {
+      throw new InvalidInputError('USDH -> USDC only supports sourceChain=hypercore')
     }
 
     const slippageBps = input.slippageBps ?? defaultSlippageBps
@@ -408,38 +452,57 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     const pair = await resolvePair()
     const book = await info.l2Book(pair.name)
     const midPrice = midPrice18(book)
+    const estimatedReceived =
+      direction.side === 'buy'
+        ? applyPriceInverse(input.amount, midPrice)
+        : applyPrice(input.amount, midPrice)
     const quote: Quote = {
-      estimatedReceived: applyPriceInverse(input.amount, midPrice),
+      from: direction.from,
+      to: direction.to,
+      estimatedReceived,
       midPrice,
       pair: pair.name,
       validUntil: Date.now() + QUOTE_TTL_MS,
     }
 
+    const sourceTokenIndex = direction.side === 'buy' ? pair.tokens[1] : pair.tokens[0]
+    const sourceWeiDecimals =
+      direction.side === 'buy' ? pair.quoteWeiDecimals : pair.baseWeiDecimals
     const hypercore = await readHypercoreBalance(
       info,
       accountAddress,
-      input.from,
-      pair.tokens[1],
-      pair.quoteWeiDecimals,
+      direction.from,
+      sourceTokenIndex,
+      sourceWeiDecimals,
     )
     const hypercoreBalance = hypercore.available
     const requiredSourceAmount =
-      input.amount + (input.amount * (BigInt(slippageBps) + HC_FEE_BUFFER_BPS)) / BPS_DENOMINATOR
+      direction.side === 'buy'
+        ? input.amount +
+          (input.amount * (BigInt(slippageBps) + HC_FEE_BUFFER_BPS)) / BPS_DENOMINATOR
+        : input.amount
     const requiredHypercoreBalance = scaleAmount(
       requiredSourceAmount,
       STABLE_DECIMALS,
-      pair.quoteWeiDecimals,
+      sourceWeiDecimals,
     )
     const hypercoreCovers = hypercoreBalance >= requiredHypercoreBalance
     const requestedSource = input.sourceChain ?? 'auto'
     const sourceChain: SourceChain =
-      requestedSource === 'auto' ? (hypercoreCovers ? 'hypercore' : 'hyperevm') : requestedSource
+      direction.side === 'sell'
+        ? 'hypercore'
+        : requestedSource === 'auto'
+          ? hypercoreCovers
+            ? 'hypercore'
+            : 'hyperevm'
+          : requestedSource
     const requiresBridge = sourceChain === 'hyperevm'
     const canSwap =
       !belowMinOrderValue && (requiresBridge ? config.evmWallet !== undefined : hypercoreCovers)
 
     return {
-      from: input.from,
+      from: direction.from,
+      to: direction.to,
       amount: input.amount,
       sourceChain,
       requiresBridge,
@@ -454,19 +517,29 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       hypercoreBalance,
       hypercoreTotal: hypercore.total,
       hypercoreHold: hypercore.hold,
-      hypercoreDecimals: pair.quoteWeiDecimals,
+      hypercoreDecimals: sourceWeiDecimals,
       requiredHypercoreBalance,
     }
   }
 }
 
-function buildOrderAction(pair: ResolvedPair, priceStr: string, sizeStr: string): unknown {
+type SwapDirection =
+  | { from: 'USDC'; to: 'USDH'; side: 'buy' }
+  | { from: 'USDH'; to: 'USDC'; side: 'sell' }
+  | { from: 'USDT'; to: 'USDH'; side: 'buy' }
+
+function buildOrderAction(
+  pair: ResolvedPair,
+  side: SwapDirection['side'],
+  priceStr: string,
+  sizeStr: string,
+): unknown {
   return {
     type: 'order',
     orders: [
       {
         a: pair.assetIndex,
-        b: true,
+        b: side === 'buy',
         p: priceStr,
         s: sizeStr,
         r: false,
@@ -477,7 +550,12 @@ function buildOrderAction(pair: ResolvedPair, priceStr: string, sizeStr: string)
   }
 }
 
-function finalizeFill(status: OrderStatus, midPrice: bigint, logger: Logger): SwapResult {
+function finalizeFill(
+  status: OrderStatus,
+  midPrice: bigint,
+  direction: SwapDirection,
+  logger: Logger,
+): SwapResult {
   if ('error' in status) {
     throw new NetworkError(`order error: ${status.error}`)
   }
@@ -485,14 +563,17 @@ function finalizeFill(status: OrderStatus, midPrice: bigint, logger: Logger): Sw
     throw new NetworkError('IOC order rested unexpectedly')
   }
   const { totalSz, avgPx, oid } = status.filled
-  const received = parseDecimal(totalSz, STABLE_DECIMALS)
+  const filledBase = parseDecimal(totalSz, STABLE_DECIMALS)
   const fillPrice18 = parseDecimal(avgPx, PRICE_DECIMALS)
-  const spent = (received * fillPrice18) / TEN_PRICE
+  const received = direction.side === 'buy' ? filledBase : (filledBase * fillPrice18) / TEN_PRICE
+  const spent = direction.side === 'buy' ? (filledBase * fillPrice18) / TEN_PRICE : filledBase
   const diff = fillPrice18 - midPrice
   const absDiff = diff < 0n ? -diff : diff
   const slippageBps = midPrice === 0n ? 0 : Number((absDiff * 10_000n) / midPrice)
   logger.info('swap.filled', {
     oid,
+    from: direction.from,
+    to: direction.to,
     received: received.toString(),
     spent: spent.toString(),
     slippageBps,
@@ -509,7 +590,7 @@ function finalizeFill(status: OrderStatus, midPrice: bigint, logger: Logger): Sw
 async function readHypercoreBalance(
   info: InfoClient,
   user: KitConfig['signer']['address'],
-  asset: SourceStable,
+  asset: SwapAsset,
   tokenIndex: number,
   decimals: number,
 ): Promise<HypercoreBalance> {
@@ -573,23 +654,50 @@ function validateRouteInput(input: RouteInput): void {
 
 function validateQuoteInput(input: QuoteInput): void {
   assertFromAndAmount(input.from, input.amount)
+  resolveSwapDirection(input)
+}
+
+function resolveSwapDirection(input: { from: SwapAsset; to?: TargetStable }): SwapDirection {
+  assertSwapAsset(input.from)
+  if (input.from === 'USDC') {
+    if (input.to !== undefined && input.to !== 'USDH') {
+      throw new InvalidInputError(`to must be 'USDH' when from is 'USDC'`)
+    }
+    return { from: 'USDC', to: 'USDH', side: 'buy' }
+  }
+  if (input.from === 'USDH') {
+    if (input.to !== undefined && input.to !== 'USDC') {
+      throw new InvalidInputError(`to must be 'USDC' when from is 'USDH'`)
+    }
+    return { from: 'USDH', to: 'USDC', side: 'sell' }
+  }
+  if (input.to !== undefined && input.to !== 'USDH') {
+    throw new InvalidInputError(`to must be 'USDH' when from is 'USDT'`)
+  }
+  return { from: 'USDT', to: 'USDH', side: 'buy' }
 }
 
 function assertFromAndAmount(from: unknown, amount: unknown): void {
-  assertSourceStable(from)
+  assertSwapAsset(from)
   if (typeof amount !== 'bigint' || amount <= 0n) {
     throw new InvalidInputError('amount must be a positive bigint')
   }
 }
 
-function assertSourceStable(from: unknown): asserts from is SourceStable {
-  if (from !== 'USDC' && from !== 'USDT') {
-    throw new InvalidInputError(`from must be 'USDC' or 'USDT'`)
+function assertSwapAsset(from: unknown): asserts from is SwapAsset {
+  if (from !== 'USDC' && from !== 'USDT' && from !== 'USDH') {
+    throw new InvalidInputError(`from must be 'USDC', 'USDH', or 'USDT'`)
+  }
+}
+
+function assertBalanceAsset(asset: unknown): asserts asset is SwapAsset {
+  if (asset !== 'USDC' && asset !== 'USDT' && asset !== 'USDH') {
+    throw new InvalidInputError(`asset must be 'USDC', 'USDH', or 'USDT'`)
   }
 }
 
 function assertSlippage(bps: number): void {
-  if (!Number.isFinite(bps) || bps < 0 || bps > 10_000) {
-    throw new InvalidInputError('slippageBps must be a finite number in [0, 10000]')
+  if (!Number.isFinite(bps) || !Number.isInteger(bps) || bps < 0 || bps > 10_000) {
+    throw new InvalidInputError('slippageBps must be an integer in [0, 10000]')
   }
 }
