@@ -112,6 +112,8 @@ describe('createPairResolver', () => {
       l2Book: vi.fn(),
       spotClearinghouseState: vi.fn(),
       allMids: vi.fn(),
+      frontendOpenOrders: vi.fn(),
+      orderStatus: vi.fn(),
     }
   }
 

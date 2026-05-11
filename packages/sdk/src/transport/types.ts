@@ -83,3 +83,72 @@ export interface OutcomeMeta {
   outcomes: OutcomeMetaOutcome[]
   questions?: OutcomeMetaQuestion[]
 }
+
+/** A user's resting open order, as returned by `frontendOpenOrders`. */
+export interface OpenOrder {
+  /** Coin name (e.g. "USDH/USDC") or `@<spotIndex>` for non-canonical spot. */
+  coin: string
+  /** "B" = buy/bid, "A" = ask/sell. */
+  side: 'A' | 'B'
+  limitPx: string
+  sz: string
+  origSz: string
+  oid: number
+  timestamp: number
+  reduceOnly: boolean
+  orderType: string
+  triggerCondition: string
+  triggerPx: string
+  isPositionTpsl: boolean
+  isTrigger: boolean
+}
+
+export type OrderStatusValue =
+  | 'open'
+  | 'filled'
+  | 'canceled'
+  | 'triggered'
+  | 'rejected'
+  | 'marginCanceled'
+  | 'vaultWithdrawalCanceled'
+  | 'openInterestCapCanceled'
+  | 'selfTradeCanceled'
+  | 'reduceOnlyCanceled'
+  | 'siblingFilledCanceled'
+  | 'delistedCanceled'
+  | 'liquidatedCanceled'
+  | 'scheduledCancel'
+  | 'tickRejected'
+  | 'minTradeNtlRejected'
+  | 'perpMarginRejected'
+  | 'badAloPxRejected'
+  | 'iocCancelRejected'
+  | 'badTriggerPxRejected'
+  | 'marketOrderNoLiquidityRejected'
+  | 'insufficientSpotBalanceRejected'
+  | 'oracleRejected'
+
+/** Detailed order info returned by the `orderStatus` endpoint. */
+export interface OrderStatusDetail {
+  order: {
+    coin: string
+    side: 'A' | 'B'
+    limitPx: string
+    sz: string
+    origSz: string
+    oid: number
+    timestamp: number
+    reduceOnly: boolean
+    orderType: string
+    triggerCondition: string
+    triggerPx: string
+    isPositionTpsl: boolean
+    isTrigger: boolean
+  }
+  status: OrderStatusValue
+  statusTimestamp: number
+}
+
+export type OrderStatusResponse =
+  | { status: 'order'; order: OrderStatusDetail }
+  | { status: 'unknownOid' }

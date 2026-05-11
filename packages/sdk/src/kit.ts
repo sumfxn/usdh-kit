@@ -15,6 +15,13 @@ import {
   NotImplementedError,
 } from './errors.js'
 import {
+  type CancelOrderInput,
+  type CancelOrderResult,
+  type PlaceOrderInput,
+  type PlaceOrderResult,
+  createOrders,
+} from './orders.js'
+import {
   type GetOutcomeBookInput,
   type GetOutcomeMarketInput,
   type UsdhOutcomeMarket,
@@ -37,7 +44,7 @@ import {
   isOrderResponse,
 } from './transport/exchange.js'
 import { type InfoClient, type NSigFigs, createInfoClient } from './transport/info.js'
-import type { L2Book } from './transport/types.js'
+import type { L2Book, OpenOrder, OrderStatusResponse } from './transport/types.js'
 import type { BridgeInput, BridgeResult } from './types/bridge.js'
 import type { KitConfig } from './types/config.js'
 import type { Logger } from './types/logger.js'
@@ -109,6 +116,14 @@ export interface UsdhKit {
   getOutcomeBook(input: GetOutcomeBookInput): Promise<L2Book>
   /** Fetch mid prices keyed by encoded outcome side coin, e.g. `#200`. */
   getOutcomeMids(): Promise<Record<string, string>>
+  /** Place a USDH-pair spot order. Pair must come from `listPairs()`. */
+  placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult>
+  /** Cancel a resting order on a USDH pair by oid. */
+  cancelOrder(input: CancelOrderInput): Promise<CancelOrderResult>
+  /** List the user's resting open orders (account-wide, not USDH-filtered). */
+  getOpenOrders(): Promise<OpenOrder[]>
+  /** Fetch a single order's status by oid. */
+  getOrderStatus(oid: number): Promise<OrderStatusResponse>
 }
 
 /**
@@ -141,6 +156,15 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     lastNonce = candidate
     return candidate
   }
+
+  const orders = createOrders({
+    info,
+    exchange,
+    signer: config.signer,
+    network: config.network,
+    accountAddress,
+    nextNonce,
+  })
 
   async function swap(input: SwapInput): Promise<SwapResult> {
     validateSwapInput(input)
@@ -331,6 +355,22 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
 
     getOutcomeMids() {
       return outcomeDiscovery.getOutcomeMids()
+    },
+
+    placeOrder(input) {
+      return orders.placeOrder(input)
+    },
+
+    cancelOrder(input) {
+      return orders.cancelOrder(input)
+    },
+
+    getOpenOrders() {
+      return orders.getOpenOrders()
+    },
+
+    getOrderStatus(oid) {
+      return orders.getOrderStatus(oid)
     },
 
     async getQuote(input: QuoteInput): Promise<Quote> {

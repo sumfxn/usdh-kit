@@ -3,6 +3,8 @@ import type { Address } from '../types/hex.js'
 import type { Network } from '../types/network.js'
 import type {
   L2Book,
+  OpenOrder,
+  OrderStatusResponse,
   OutcomeMeta,
   OutcomeMetaQuestion,
   OutcomeSideSpec,
@@ -34,6 +36,10 @@ export interface InfoClient {
   spotClearinghouseState(user: Address): Promise<SpotClearinghouseState>
   /** Returns mid prices keyed by coin name (perps) or `@<spotIndex>` (spot). */
   allMids(): Promise<Record<string, string>>
+  /** Resting open orders for a user, with extended frontend fields. */
+  frontendOpenOrders(user: Address): Promise<OpenOrder[]>
+  /** Status of a single order by oid. */
+  orderStatus(user: Address, oid: number): Promise<OrderStatusResponse>
 }
 
 export function createInfoClient(config: InfoClientConfig): InfoClient {
@@ -111,6 +117,15 @@ export function createInfoClient(config: InfoClientConfig): InfoClient {
     },
     allMids() {
       return post<unknown>({ type: 'allMids' }).then(assertAllMids)
+    },
+    frontendOpenOrders(user) {
+      return post<unknown>({ type: 'frontendOpenOrders', user }).then(assertOpenOrders)
+    },
+    orderStatus(user, oid) {
+      if (!Number.isInteger(oid) || oid < 0) {
+        throw new InvalidInputError('oid must be a non-negative integer')
+      }
+      return post<unknown>({ type: 'orderStatus', user, oid }).then(assertOrderStatus)
     },
   }
 }
@@ -222,6 +237,74 @@ function assertL2Book(data: unknown, coin: string): L2Book {
     throw new NetworkError(`invalid l2Book response for ${coin}`)
   }
   return data as unknown as L2Book
+}
+
+function assertOpenOrders(data: unknown): OpenOrder[] {
+  if (!Array.isArray(data)) {
+    throw new NetworkError('invalid frontendOpenOrders response')
+  }
+  for (const item of data) {
+    if (!isOpenOrder(item)) {
+      throw new NetworkError('invalid frontendOpenOrders entry')
+    }
+  }
+  return data as OpenOrder[]
+}
+
+function isOpenOrder(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const v = value as {
+    coin?: unknown
+    side?: unknown
+    limitPx?: unknown
+    sz?: unknown
+    origSz?: unknown
+    oid?: unknown
+    timestamp?: unknown
+    reduceOnly?: unknown
+    orderType?: unknown
+    triggerCondition?: unknown
+    triggerPx?: unknown
+    isPositionTpsl?: unknown
+    isTrigger?: unknown
+  }
+  return (
+    typeof v.coin === 'string' &&
+    (v.side === 'A' || v.side === 'B') &&
+    typeof v.limitPx === 'string' &&
+    typeof v.sz === 'string' &&
+    typeof v.origSz === 'string' &&
+    typeof v.oid === 'number' &&
+    typeof v.timestamp === 'number' &&
+    typeof v.reduceOnly === 'boolean' &&
+    typeof v.orderType === 'string' &&
+    typeof v.triggerCondition === 'string' &&
+    typeof v.triggerPx === 'string' &&
+    typeof v.isPositionTpsl === 'boolean' &&
+    typeof v.isTrigger === 'boolean'
+  )
+}
+
+function assertOrderStatus(data: unknown): OrderStatusResponse {
+  if (!isRecord(data)) {
+    throw new NetworkError('invalid orderStatus response')
+  }
+  const v = data as { status?: unknown; order?: unknown }
+  if (v.status === 'unknownOid') {
+    return { status: 'unknownOid' }
+  }
+  if (v.status !== 'order' || !isRecord(v.order)) {
+    throw new NetworkError('invalid orderStatus response')
+  }
+  const detail = v.order as { order?: unknown; status?: unknown; statusTimestamp?: unknown }
+  if (
+    !isRecord(detail.order) ||
+    typeof detail.status !== 'string' ||
+    typeof detail.statusTimestamp !== 'number'
+  ) {
+    throw new NetworkError('invalid orderStatus detail')
+  }
+  return data as OrderStatusResponse
 }
 
 function assertAllMids(data: unknown): Record<string, string> {

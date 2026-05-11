@@ -18,6 +18,14 @@ export {
   outcomeTokenName,
 } from './outcomes.js'
 export type {
+  CancelOrderInput,
+  CancelOrderResult,
+  OrderSide,
+  PlaceOrderInput,
+  PlaceOrderResult,
+  Tif,
+} from './orders.js'
+export type {
   GetOutcomeBookInput,
   GetOutcomeMarketInput,
   OutcomeSide,
@@ -30,6 +38,10 @@ export type { InfoClient, InfoClientConfig, NSigFigs } from './transport/info.js
 export type {
   L2Book,
   L2Level,
+  OpenOrder,
+  OrderStatusDetail,
+  OrderStatusResponse,
+  OrderStatusValue,
   OutcomeMeta,
   OutcomeMetaOutcome,
   OutcomeMetaQuestion,
