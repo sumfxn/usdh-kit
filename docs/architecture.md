@@ -119,10 +119,12 @@ BridgeFromCoreInput
       ├── EIP-712 typed data domain ('HyperliquidSignTransaction', chainId 0x66eee)
       └── token = USDC or tokenName:tokenId, destination = system address
   ↓ exchange.submit({ action, signature, nonce })
-  ↓ return BridgeFromCoreResult { systemAddress, recipient, submittedAt }
+  ↓ return BridgeFromCoreResult { status: 'submitted', systemAddress, recipient, submittedAt }
 ```
 
 `bridgeFromCore()` supports linked `USDC` and `USDH` spot assets. It does not accept an arbitrary HyperEVM recipient in v1: Hyperliquid credits the EVM-side account associated with the Core action sender, so the safest public API is sender-owned bridge-out only.
+The helper resolves after the `sendAsset` action is accepted; it does not poll
+for the later HyperEVM credit.
 
 ## bridgeAndSwap
 

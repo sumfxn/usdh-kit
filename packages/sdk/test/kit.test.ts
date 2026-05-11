@@ -279,6 +279,22 @@ describe('swap', () => {
     await expect(kit.swap({ from: 'USDC', amount: 0n })).rejects.toThrow(InvalidInputError)
   })
 
+  it('rejects full sell slippage before fetching or signing', async () => {
+    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch
+    const signTypedData = vi.fn(stubSigner.signTypedData)
+    const kit = createUsdhKit({
+      network: 'mainnet',
+      signer: { ...stubSigner, signTypedData },
+      fetch,
+    })
+
+    await expect(
+      kit.swap({ from: 'USDH', to: 'USDC', amount: 11_000_000n, slippageBps: 10_000 }),
+    ).rejects.toThrow(/less than 10000/)
+    expect(fetch).not.toHaveBeenCalled()
+    expect(signTypedData).not.toHaveBeenCalled()
+  })
+
   it('throws NotImplementedError for USDT', async () => {
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner })
     await expect(kit.swap({ from: 'USDT', amount: 1_000_000n })).rejects.toThrow(
@@ -557,6 +573,16 @@ describe('getRoute', () => {
     await expect(
       kit.getRoute({ from: 'USDH', to: 'USDC', amount: 11_000_000n, sourceChain: 'hyperevm' }),
     ).rejects.toThrow(/only supports sourceChain=hypercore/)
+  })
+
+  it('rejects full sell slippage during route preflight', async () => {
+    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    await expect(
+      kit.getRoute({ from: 'USDH', to: 'USDC', amount: 11_000_000n, slippageBps: 10_000 }),
+    ).rejects.toThrow(/less than 10000/)
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('routes through HyperEVM when HC total covers but open-order hold leaves it short', async () => {

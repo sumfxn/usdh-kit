@@ -56,13 +56,14 @@ If the user wants USDC back on HyperEVM, call `bridgeFromCore()` after the swap:
 ```ts
 const swap = await kit.swap({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
 const bridgeOut = await kit.bridgeFromCore({ asset: 'USDC', amount: swap.received })
-console.log(bridgeOut.submittedAt)
+console.log(bridgeOut.status, bridgeOut.submittedAt)
 ```
 
 `bridgeFromCore()` uses Hyperliquid's user-signed `sendAsset` action to the
 token system address. The HyperEVM recipient is the sender of that Core action,
 so the configured `signer` must be the master account, not an approved agent
-for a separate `accountAddress`.
+for a separate `accountAddress`. The helper resolves when Hyperliquid accepts
+the action, not when the later HyperEVM credit is confirmed.
 
 ## Progress events
 

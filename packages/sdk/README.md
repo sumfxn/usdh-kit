@@ -154,11 +154,13 @@ console.log(`got ${sold.received} USDC`)
 address. Hyperliquid credits the EVM recipient as the sender of the Core action,
 so this helper requires the configured signer to be the master account
 (`signer.address === accountAddress`); approved agent wallets cannot withdraw
-Core funds for another account.
+Core funds for another account. It resolves when Hyperliquid accepts the
+`sendAsset` action; the HyperEVM credit is asynchronous and should be confirmed
+separately before treating funds as spendable on HyperEVM.
 
 ```ts
 const out = await kit.bridgeFromCore({ asset: 'USDC', amount: sold.received })
-console.log(out.systemAddress, out.submittedAt)
+console.log(out.status, out.systemAddress, out.submittedAt)
 ```
 
 ## Discover USDH spot markets

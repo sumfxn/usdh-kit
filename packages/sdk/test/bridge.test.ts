@@ -64,10 +64,10 @@ function stateWithToken(
   }
 }
 
-function stubInfo(states: SpotClearinghouseState[]): InfoClient {
+function stubInfo(states: SpotClearinghouseState[], meta = sampleSpotMeta): InfoClient {
   let i = 0
   return {
-    spotMeta: vi.fn(async () => sampleSpotMeta),
+    spotMeta: vi.fn(async () => meta),
     outcomeMeta: vi.fn(),
     l2Book: vi.fn(),
     spotClearinghouseState: vi.fn(async () => {
@@ -521,8 +521,10 @@ describe('runBridgeFromCore', () => {
       nonce: 1_775_000_000_000n,
     })
     expect(result).toEqual({
+      status: 'submitted',
       asset: 'USDH',
       amount: 1_250_000n,
+      evmDecimals: 6,
       systemAddress: '0x2000000000000000000000000000000000000168',
       recipient: baseUser,
       submittedAt: 1_775_000_000_000,
@@ -558,6 +560,83 @@ describe('runBridgeFromCore', () => {
       signature: { r: `0x${'1'.repeat(64)}`, s: `0x${'2'.repeat(64)}`, v: 27 },
       nonce: 1_775_000_000_001n,
     })
+  })
+
+  it('derives bridge-out amount decimals from linked EVM metadata', async () => {
+    const signer = stubSigner(baseUser)
+    const exchange = stubExchange()
+    const meta: SpotMeta = {
+      ...sampleSpotMeta,
+      tokens: sampleSpotMeta.tokens.map((token) =>
+        token.name === 'USDH'
+          ? {
+              ...token,
+              evmContract: {
+                address: '0x111111a1a0667d36bd57c0a9f569b98057111111' as const,
+                evm_extra_wei_decimals: 0,
+              },
+            }
+          : token,
+      ),
+    }
+
+    const result = await runBridgeFromCore(
+      { asset: 'USDH', amount: 125_000_000n },
+      {
+        info: stubInfo([stateWithToken('USDH', 360, '2')], meta),
+        exchange,
+        signer,
+        network: 'mainnet',
+        logger: silentLogger,
+        accountAddress: baseUser,
+        now: () => 1_775_000_000_002,
+      },
+    )
+
+    expect(exchange.submit).toHaveBeenCalledWith({
+      action: expect.objectContaining({
+        token: 'USDH:0xbbbb',
+        amount: '1.25',
+      }),
+      signature: { r: `0x${'1'.repeat(64)}`, s: `0x${'2'.repeat(64)}`, v: 27 },
+      nonce: 1_775_000_000_002n,
+    })
+    expect(result.evmDecimals).toBe(8)
+  })
+
+  it('rejects bridge-out amounts that cannot map exactly to HyperCore decimals', async () => {
+    const signer = stubSigner(baseUser)
+    const exchange = stubExchange()
+    const meta: SpotMeta = {
+      ...sampleSpotMeta,
+      tokens: sampleSpotMeta.tokens.map((token) =>
+        token.name === 'USDH'
+          ? {
+              ...token,
+              evmContract: {
+                address: '0x111111a1a0667d36bd57c0a9f569b98057111111' as const,
+                evm_extra_wei_decimals: 1,
+              },
+            }
+          : token,
+      ),
+    }
+
+    await expect(
+      runBridgeFromCore(
+        { asset: 'USDH', amount: 1n },
+        {
+          info: stubInfo([stateWithToken('USDH', 360, '2')], meta),
+          exchange,
+          signer,
+          network: 'mainnet',
+          logger: silentLogger,
+          accountAddress: baseUser,
+        },
+      ),
+    ).rejects.toThrow(/too much precision/)
+    expect(signer.signTypedData).not.toHaveBeenCalled()
+    expect(exchange.submit).not.toHaveBeenCalled()
   })
 
   it('rejects agent-style accountAddress mismatch', async () => {

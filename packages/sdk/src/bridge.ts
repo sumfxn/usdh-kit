@@ -35,8 +35,6 @@ const HYPER_EVM_CHAIN_ID: Record<Network, number> = {
 const DEFAULT_CREDIT_TIMEOUT_MS = 180_000
 const CREDIT_POLL_INTERVAL_MS = 1_000
 const SPOT_DEX_ID = 0xffffffff
-const STABLE_DECIMALS = 6
-
 const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
 
 export interface BridgeDeps {
@@ -178,6 +176,18 @@ function sendAssetToken(asset: BridgeFromCoreAsset, token: SpotToken): string {
   return asset === 'USDC' ? 'USDC' : `${asset}:${token.tokenId}`
 }
 
+function linkedEvmDecimals(token: SpotToken, asset: BridgeFromCoreAsset): number {
+  const extra = token.evmContract?.evm_extra_wei_decimals
+  if (typeof extra !== 'number' || !Number.isInteger(extra)) {
+    throw new NetworkError(`${asset} has invalid evm_extra_wei_decimals metadata`)
+  }
+  const decimals = token.weiDecimals + extra
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new NetworkError(`${asset} resolved to invalid HyperEVM decimals`)
+  }
+  return decimals
+}
+
 export interface BridgeRunArgs extends BridgeInput {
   user: Address
 }
@@ -301,7 +311,8 @@ export async function runBridgeFromCore(
   const meta = await deps.info.spotMeta()
   const token = findStableToken(meta, args.asset)
   const systemAddress = tokenSystemAddress(token.index)
-  const requiredCore = scaleAmountExact(args.amount, STABLE_DECIMALS, token.weiDecimals)
+  const evmDecimals = linkedEvmDecimals(token, args.asset)
+  const requiredCore = scaleAmountExact(args.amount, evmDecimals, token.weiDecimals)
   const balance = await readCoreAvailable(deps.info, accountAddress, token.index, token.weiDecimals)
   if (balance.available < requiredCore) {
     throw new InsufficientBalanceError(requiredCore, balance.available, args.asset)
@@ -309,7 +320,7 @@ export async function runBridgeFromCore(
 
   const submittedAt = deps.now?.() ?? Date.now()
   const nonce = BigInt(submittedAt)
-  const amount = formatStableAmount(args.amount)
+  const amount = formatAmount(args.amount, evmDecimals)
   const tokenWire = sendAssetToken(args.asset, token)
   const { action, signature } = await signSendAssetAction({
     signer: deps.signer,
@@ -345,6 +356,8 @@ export async function runBridgeFromCore(
   return {
     asset: args.asset,
     amount: args.amount,
+    status: 'submitted',
+    evmDecimals,
     systemAddress,
     recipient: accountAddress,
     submittedAt,
@@ -392,10 +405,14 @@ async function sendAndValidate(
   return txHashRaw.toLowerCase() as Hex
 }
 
-function formatStableAmount(amount: bigint): string {
-  const padded = amount.toString().padStart(STABLE_DECIMALS + 1, '0')
-  const intPart = padded.slice(0, -STABLE_DECIMALS)
-  const fracPart = padded.slice(-STABLE_DECIMALS).replace(/0+$/, '')
+function formatAmount(amount: bigint, decimals: number): string {
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new InvalidInputError('decimals must be a non-negative integer')
+  }
+  if (decimals === 0) return amount.toString()
+  const padded = amount.toString().padStart(decimals + 1, '0')
+  const intPart = padded.slice(0, -decimals)
+  const fracPart = padded.slice(-decimals).replace(/0+$/, '')
   return fracPart === '' ? intPart : `${intPart}.${fracPart}`
 }
 

@@ -28,13 +28,17 @@ export interface BridgeResult {
 export interface BridgeFromCoreInput {
   /** Linked spot asset to bridge from HyperCore to HyperEVM. */
   asset: BridgeFromCoreAsset
-  /** Amount in the asset's smallest user unit (6 decimals for USDH/USDC). */
+  /** Amount in the linked HyperEVM asset's smallest unit. */
   amount: bigint
 }
 
 export interface BridgeFromCoreResult {
+  /** The sendAsset action was accepted; HyperEVM credit is asynchronous. */
+  status: 'submitted'
   asset: BridgeFromCoreAsset
   amount: bigint
+  /** EVM decimals derived from `spotMeta` for formatting the sendAsset amount. */
+  evmDecimals: number
   /** HyperCore system address used as the sendAsset destination. */
   systemAddress: Address
   /** HyperEVM recipient. Protocol credits the sender of the Core action. */

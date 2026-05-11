@@ -23,6 +23,10 @@ agent wallets are useful for spot orders, but they cannot bridge funds out for a
 master account. Create a separate kit with the master wallet as `signer` before
 calling `bridgeFromCore()`.
 
+`bridgeFromCore()` returns `status: 'submitted'` after Hyperliquid accepts the
+action. The HyperEVM-side credit is asynchronous, so confirm the EVM balance
+before starting a dependent HyperEVM transaction.
+
 Browser apps that use an approved agent should also pass `accountAddress` so bridge ownership and balance reads stay tied to the master wallet:
 
 ```ts

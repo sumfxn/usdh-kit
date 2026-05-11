@@ -185,6 +185,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     validateSwapInput(input)
     const direction = resolveSwapDirection(input)
     const slippageBps = input.slippageBps ?? defaultSlippageBps
+    assertDirectionSlippage(direction, slippageBps)
     if (direction.from === 'USDT') {
       throw new NotImplementedError('USDT swap lands in a follow-up PR')
     }
@@ -448,6 +449,7 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
     }
 
     const slippageBps = input.slippageBps ?? defaultSlippageBps
+    assertDirectionSlippage(direction, slippageBps)
     const belowMinOrderValue = input.amount < MIN_ORDER_SOURCE_AMOUNT
     const pair = await resolvePair()
     const book = await info.l2Book(pair.name)
@@ -699,5 +701,12 @@ function assertBalanceAsset(asset: unknown): asserts asset is SwapAsset {
 function assertSlippage(bps: number): void {
   if (!Number.isFinite(bps) || !Number.isInteger(bps) || bps < 0 || bps > 10_000) {
     throw new InvalidInputError('slippageBps must be an integer in [0, 10000]')
+  }
+}
+
+function assertDirectionSlippage(direction: SwapDirection, bps: number): void {
+  assertSlippage(bps)
+  if (direction.side === 'sell' && bps >= 10_000) {
+    throw new InvalidInputError('slippageBps must be less than 10000 for USDH -> USDC')
   }
 }
