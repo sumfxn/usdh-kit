@@ -1,7 +1,9 @@
 # Roadmap
 
-> Status: living plan. Track 1 spot discovery has landed; Track 2 outcome reads
-> are under review as an experimental read-only follow-up.
+> Status: living plan. Tracks 1-4 have landed. Track 5 HyperEVM direct swap is
+> paused as a later spike until liquidity, routing, allowance, and failure modes
+> are validated. Release remains intentionally gated until live testnet/IRL
+> validation and generated release output are reviewed.
 > Direction: keep `usdh-kit` centered on USDH, but expand from "obtain USDH via
 > USDC" to "interact cleanly with USDH surfaces on Hyperliquid".
 
@@ -26,10 +28,20 @@ What already works:
 - HyperCore balance reads and route/preflight helpers
 - `bridgeAndSwap()` for route -> optional bridge -> swap
 - USDH spot discovery with `listPairs`, `getPair`, `getBook`, and `getMids`
-- `InfoClient` reads for `spotMeta`, `spotClearinghouseState`, and `l2Book`
+- experimental read-only outcome discovery with `listOutcomeMarkets`,
+  `getOutcomeMarket`, `getOutcomeBook`, and `getOutcomeMids`
+- USDH-only spot orders with `placeOrder`, `cancelOrder`, `getOpenOrders`, and
+  `getOrderStatus`
+- `InfoClient` reads for `spotMeta`, `outcomeMeta`,
+  `spotClearinghouseState`, `l2Book`, `allMids`, `frontendOpenOrders`, and
+  `orderStatus`
 - typed lifecycle errors, including `BridgeAndSwapError` and
   `isBridgeAndSwapError()`
 - React widget on top of the SDK
+
+- `USDH -> USDC` HyperCore reverse swaps
+- `bridgeFromCore()` for linked USDC/USDH spot assets moving from HyperCore to
+  HyperEVM
 
 This remains the core retail path. New roadmap items should preserve that simple
 path instead of forcing integrators into a broader trading abstraction.
@@ -85,7 +97,8 @@ type UsdhPair = {
   - testnet/mainnet token-index handling behind existing network config
 - Watchlist:
   - HIP-3 USDH-denominated markets
-  - outcome metadata, once Track 2 confirms the exact API shape
+  - outcome write support, only after denomination/settlement behavior is
+    verified
 - Out of scope:
   - generic pair discovery for all assets
   - generic perps SDK
@@ -95,9 +108,9 @@ type UsdhPair = {
 
 Owner: @sumfxn
 
-Status: in review as PR #51. The proposed API is read-only and experimental:
-metadata, side encoding helpers, books, and mids only. It does not add outcome
-orders, cancellations, or settlement/denomination claims.
+Status: landed as PR #51. The API is read-only and experimental: metadata, side
+encoding helpers, books, and mids only. It does not add outcome orders,
+cancellations, or settlement/denomination claims.
 
 Prioritize this if outcomes are natively denominated in USDH. This is a stronger
 USDH use case than generic perps because it creates direct demand for USDH as the
@@ -114,9 +127,10 @@ settlement/quote asset.
 ### Proposed API
 
 ```ts
-kit.listOutcomeMarkets({ quote?: 'USDH' }): Promise<UsdhOutcomeMarket[]>
-kit.getOutcomeMarket(id: string): Promise<UsdhOutcomeMarket>
-kit.getOutcomeBook(id: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
+kit.listOutcomeMarkets(): Promise<UsdhOutcomeMarket[]>
+kit.getOutcomeMarket({ outcome }): Promise<UsdhOutcomeMarket>
+kit.getOutcomeBook({ outcome, side, nSigFigs? }): Promise<L2Book>
+kit.getOutcomeMids(): Promise<Record<string, string>>
 ```
 
 Possible later write path:
@@ -141,6 +155,12 @@ kit.placeOutcomeOrder({
 - Write support remains out of scope.
 
 ## Track 3 - Targeted USDH trading
+
+Owner: @Yaugourt
+
+Status: landed as PR #54. The final API stays USDH-scoped while accepting both
+live Hyperliquid pair names such as `@230` and ergonomic token aliases such as
+`USDH/USDC`.
 
 Build only the trading primitives needed for USDH markets:
 
@@ -177,6 +197,10 @@ lower-level order API in docs.
 
 ## Track 4 - Useful USDH flows
 
+Status: landed in PR #56. Reverse swap and bridge-out are implemented in the SDK
+with conservative constraints. No live write-path bridge/swap test has been run
+yet, so release remains gated on IRL validation.
+
 Keep the UX simple:
 
 - `USDC -> USDH` remains the core path
@@ -188,8 +212,20 @@ Keep the UX simple:
 
 ```ts
 kit.swap({ from: 'USDH', to: 'USDC', amount, ... })
-kit.bridgeFromCore({ asset: 'USDC' | 'USDH', amount, recipient? })
+kit.bridgeFromCore({ asset: 'USDC' | 'USDH', amount })
 ```
+
+Implementation notes from PR #56:
+
+- `USDH -> USDC` is HyperCore-only. HyperEVM direct swap stays a separate
+  Track 5 spike.
+- `bridgeFromCore()` uses Hyperliquid `sendAsset` to the token system address.
+- The HyperEVM recipient is the Core action sender, so v1 does not expose an
+  arbitrary `recipient`.
+- Approved agent wallets cannot bridge funds out for a master account;
+  `signer.address` must match `accountAddress`.
+- Live validation for #56 is read-only only: mainnet/testnet `spotMeta`,
+  `l2Book`, SDK `getQuote()`, and SDK `getRoute()`.
 
 Multi-hop via arbitrary intermediate assets should stay out of scope until there
 is a clear product need and enough tests to make route selection safe.
@@ -214,11 +250,11 @@ kit.evmQuote({ from, to, amount }): Promise<EvmQuote>
 kit.evmSwap({ from, to, amount, minOut?, recipient?, deadline? }): Promise<EvmSwapResult>
 ```
 
-Do not block Tracks 1 and 2 on this.
+Do not block shipped tracks on this.
 
-## Initial split
+## Landed Split
 
-Start with two parallel PRs:
+The initial SDK expansion landed as four focused PRs:
 
 1. @Yaugourt: Track 1, Discovery USDH
    - spot USDH market discovery first
@@ -232,7 +268,17 @@ Start with two parallel PRs:
    - land a read-only experimental API if the shape is stable enough
    - document any unknowns before write support
 
-After both land, revisit Track 3 with actual market metadata in hand.
+3. @Yaugourt: Track 3, Targeted USDH trading
+   - spot order placement and cancellation for USDH-bearing pairs
+   - USDH-filtered open orders and order status reads
+   - live pair names plus token-pair aliases
+   - no generic Hyperliquid account/order surface
+
+4. @sumfxn: Track 4, Useful USDH flows
+  - `USDH -> USDC` reverse swap on HyperCore
+  - `bridgeFromCore()` for linked USDC/USDH spot assets
+  - no arbitrary bridge-out recipient
+  - no HyperEVM direct swap or arbitrary multi-hop routing
 
 ## Non-goals
 
@@ -242,14 +288,19 @@ After both land, revisit Track 3 with actual market metadata in hand.
 - HyperEVM direct swap before liquidity and router validation
 - Broad agent/vault support before the USDH-specific API is settled
 
-## Open questions
+## Decisions And Open Questions
 
-1. Should `listPairs()` default to spot-only USDH markets? Proposed: yes.
-2. Should outcomes live under `listPairs({ kind: 'outcome' })` or separate
-   `listOutcomeMarkets()`? Proposed: separate API until the metadata shape is
-   proven.
-3. Should Track 3 support only USDH pairs, or any pair returned by
-   `listPairs()`? Proposed: only USDH pairs for this package.
-4. Which API should expose HIP-3 USDH markets, if any? Proposed: experimental
+Resolved decisions:
+
+1. `listPairs()` is spot-only and USDH-scoped.
+2. Outcomes use separate `listOutcomeMarkets()` style APIs.
+3. Track 3 supports only USDH-bearing spot pairs, not generic Hyperliquid
+   trading.
+4. `bridgeFromCore()` v1 is sender-owned only; no arbitrary recipient.
+
+Open questions:
+
+1. Which API should expose HIP-3 USDH markets, if any? Proposed: experimental
    watchlist after spot/outcomes.
-5. What is the minimum useful `bridgeFromCore` API for integrators?
+2. Which examples should become first-class maintained demos before the next
+   release?
