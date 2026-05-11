@@ -146,6 +146,7 @@ A few real flows the SDK is shaped for today. Runnable examples are still on the
 - HyperEVM → HyperCore bridge with credit polling (`bridgeToCore`)
 - HyperCore balance, route/preflight helpers plus `bridgeAndSwap()` orchestration
 - Experimental read-only outcome market metadata, books, and mids
+- USDH-only spot order helpers for placing, cancelling, and reading USDH-pair orders
 - Wallet-agnostic `Signer` interface (works with viem, ethers, Privy, Turnkey, raw private key)
 - Approved Hyperliquid agent wallet flow for browser apps (`approveAgent`, `accountAddress`)
 - Read-only `InfoClient` (spotMeta, outcomeMeta, spot clearinghouse state, L2 book, allMids) for consumers building custom UIs

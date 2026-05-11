@@ -17,6 +17,8 @@ import {
 import {
   type CancelOrderInput,
   type CancelOrderResult,
+  type GetOpenOrdersInput,
+  type GetOrderStatusInput,
   type PlaceOrderInput,
   type PlaceOrderResult,
   createOrders,
@@ -104,7 +106,7 @@ export interface UsdhKit {
   listPairs(opts?: ListUsdhPairsOpts): Promise<UsdhPair[]>
   /** Find one USDH-bearing spot pair by base/quote token names. */
   getPair(input: GetUsdhPairInput): Promise<UsdhPair>
-  /** Fetch the L2 book for a pair name (e.g. "USDH/USDC"). */
+  /** Fetch the L2 book for a live pair name, usually `@<spotIndex>`. */
   getBook(pair: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
   /** Fetch mid prices, optionally filtered to USDH-quote pairs. */
   getMids(opts?: GetMidsOpts): Promise<Record<string, string>>
@@ -116,14 +118,14 @@ export interface UsdhKit {
   getOutcomeBook(input: GetOutcomeBookInput): Promise<L2Book>
   /** Fetch mid prices keyed by encoded outcome side coin, e.g. `#200`. */
   getOutcomeMids(): Promise<Record<string, string>>
-  /** Place a USDH-pair spot order. Pair must come from `listPairs()`. */
+  /** Place a USDH-pair spot order. Accepts `listPairs()` names or token aliases like `USDH/USDC`. */
   placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult>
-  /** Cancel a resting order on a USDH pair by oid. */
+  /** Cancel a resting USDH-pair order by oid. */
   cancelOrder(input: CancelOrderInput): Promise<CancelOrderResult>
-  /** List the user's resting open orders (account-wide, not USDH-filtered). */
-  getOpenOrders(): Promise<OpenOrder[]>
-  /** Fetch a single order's status by oid. */
-  getOrderStatus(oid: number): Promise<OrderStatusResponse>
+  /** List the user's USDH-pair resting open orders, optionally filtered to one pair. */
+  getOpenOrders(input?: GetOpenOrdersInput): Promise<OpenOrder[]>
+  /** Fetch a single USDH-pair order's status by pair and oid. */
+  getOrderStatus(input: GetOrderStatusInput): Promise<OrderStatusResponse>
 }
 
 /**
@@ -365,12 +367,12 @@ export function createUsdhKit(config: KitConfig): UsdhKit {
       return orders.cancelOrder(input)
     },
 
-    getOpenOrders() {
-      return orders.getOpenOrders()
+    getOpenOrders(input) {
+      return orders.getOpenOrders(input)
     },
 
-    getOrderStatus(oid) {
-      return orders.getOrderStatus(oid)
+    getOrderStatus(input) {
+      return orders.getOrderStatus(input)
     },
 
     async getQuote(input: QuoteInput): Promise<Quote> {

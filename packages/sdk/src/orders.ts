@@ -1,4 +1,4 @@
-import { type UsdhPair, findUsdhSpotPair } from './discovery.js'
+import { type UsdhPair, findUsdhSpotPair, listUsdhSpotPairs } from './discovery.js'
 import { InvalidInputError, NetworkError } from './errors.js'
 import { formatDecimal, formatSpotPrice, midPrice18, parseDecimal } from './pricing.js'
 import { signL1Action } from './signing.js'
@@ -22,7 +22,7 @@ export type OrderSide = 'buy' | 'sell'
 export type Tif = 'Gtc' | 'Ioc' | 'Alo'
 
 export interface PlaceOrderInput {
-  /** USDH-bearing spot pair name, e.g. "USDH/USDC" or "HYPE/USDH". */
+  /** USDH-bearing spot pair. Accepts `listPairs()` names like `@230` or aliases like `USDH/USDC`. */
   pair: string
   side: OrderSide
   /** Size in base-token units, decimal string (e.g. "1.5"). */
@@ -48,13 +48,25 @@ export interface PlaceOrderResult {
 }
 
 export interface CancelOrderInput {
-  /** USDH-bearing spot pair name. */
+  /** USDH-bearing spot pair. Accepts `listPairs()` names like `@230` or aliases like `USDH/USDC`. */
   pair: string
   /** Order id to cancel. */
   oid: number
 }
 
 export interface CancelOrderResult {
+  oid: number
+}
+
+export interface GetOpenOrdersInput {
+  /** Optional USDH-bearing spot pair filter. Accepts the same formats as `placeOrder`. */
+  pair?: string
+}
+
+export interface GetOrderStatusInput {
+  /** USDH-bearing spot pair the order is expected to belong to. */
+  pair: string
+  /** Order id to inspect. */
   oid: number
 }
 
@@ -82,8 +94,8 @@ interface PairContext {
 export function createOrders(deps: OrdersDeps): {
   placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult>
   cancelOrder(input: CancelOrderInput): Promise<CancelOrderResult>
-  getOpenOrders(): Promise<OpenOrder[]>
-  getOrderStatus(oid: number): Promise<OrderStatusResponse>
+  getOpenOrders(input?: GetOpenOrdersInput): Promise<OpenOrder[]>
+  getOrderStatus(input: GetOrderStatusInput): Promise<OrderStatusResponse>
 } {
   return {
     async placeOrder(input) {
@@ -159,9 +171,7 @@ export function createOrders(deps: OrdersDeps): {
 
     async cancelOrder(input) {
       const ctx = await resolvePairContext(deps.info, input.pair)
-      if (!Number.isInteger(input.oid) || input.oid < 0) {
-        throw new InvalidInputError('oid must be a non-negative integer')
-      }
+      validateOid(input.oid)
       const action = {
         type: 'cancel',
         cancels: [{ a: ctx.assetIndex, o: input.oid }],
@@ -203,15 +213,36 @@ export function createOrders(deps: OrdersDeps): {
       return { oid: input.oid }
     },
 
-    getOpenOrders() {
-      return deps.info.frontendOpenOrders(deps.accountAddress)
+    async getOpenOrders(input) {
+      const pair = readOptionalPair(input)
+      const pairFilter = pair === undefined ? null : await resolveOrderCoinNames(deps.info, pair)
+      const openOrders = await deps.info.frontendOpenOrders(deps.accountAddress)
+      if (pairFilter !== null) {
+        return openOrders.filter((order) => pairFilter.has(order.coin))
+      }
+      if (openOrders.length === 0) {
+        return []
+      }
+      const usdhCoins = await resolveOrderCoinNames(deps.info)
+      return openOrders.filter((order) => usdhCoins.has(order.coin))
     },
 
-    getOrderStatus(oid) {
-      if (!Number.isInteger(oid) || oid < 0) {
-        throw new InvalidInputError('oid must be a non-negative integer')
+    async getOrderStatus(input) {
+      if (!isRecord(input)) {
+        throw new InvalidInputError('order status input must include pair and oid')
       }
-      return deps.info.orderStatus(deps.accountAddress, oid)
+      const { oid, pair } = input
+      assertPairInput(pair)
+      validateOid(oid)
+      const ctx = await resolvePairContext(deps.info, pair)
+      const status = await deps.info.orderStatus(deps.accountAddress, oid)
+      if (status.status === 'unknownOid') {
+        return status
+      }
+      if (!orderMatchesPair(status.order.order, ctx.pair)) {
+        throw new InvalidInputError(`order ${oid} is not on USDH pair ${ctx.pair.name}`)
+      }
+      return status
     },
   }
 }
@@ -232,10 +263,11 @@ function validatePlaceOrder(input: PlaceOrderInput, isMarket: boolean): void {
   if (input.slippageBps !== undefined) {
     if (
       !Number.isFinite(input.slippageBps) ||
+      !Number.isInteger(input.slippageBps) ||
       input.slippageBps < 0 ||
       input.slippageBps > 10_000
     ) {
-      throw new InvalidInputError('slippageBps must be a finite number in [0, 10000]')
+      throw new InvalidInputError('slippageBps must be an integer in [0, 10000]')
     }
     if (!isMarket) {
       throw new InvalidInputError('slippageBps only applies to market orders')
@@ -270,26 +302,115 @@ async function marketLimitPrice(
   return formatSpotPrice(adjusted, ctx.baseSzDecimals)
 }
 
-async function resolvePairContext(info: InfoClient, name: string): Promise<PairContext> {
-  if (typeof name !== 'string' || name.length === 0) {
-    throw new InvalidInputError('pair must be a non-empty string')
-  }
+async function resolvePairContext(info: InfoClient, pairInput: string): Promise<PairContext> {
+  assertPairInput(pairInput)
   const meta = await info.spotMeta()
-  const universePair = meta.universe.find((p) => p.name === name)
-  if (universePair === undefined) {
-    throw new InvalidInputError(`pair ${name} not found in spotMeta`)
-  }
   const tokens = new Map(meta.tokens.map((t) => [t.index, t]))
-  const baseToken = tokens.get(universePair.tokens[0])
-  const quoteToken = tokens.get(universePair.tokens[1])
-  if (baseToken === undefined || quoteToken === undefined) {
-    throw new NetworkError(`token metadata missing for pair ${name}`)
+  const universePair = meta.universe.find((p) => p.name === pairInput)
+  if (universePair !== undefined) {
+    const baseToken = tokens.get(universePair.tokens[0])
+    const quoteToken = tokens.get(universePair.tokens[1])
+    if (baseToken === undefined || quoteToken === undefined) {
+      throw new NetworkError(`token metadata missing for pair ${pairInput}`)
+    }
+    const pair = findInputUsdhSpotPair(meta, { base: baseToken.name, quote: quoteToken.name })
+    return {
+      pair,
+      baseSzDecimals: baseToken.szDecimals,
+      assetIndex: SPOT_ASSET_OFFSET + pair.index,
+    }
   }
-  const pair = findUsdhSpotPair(meta, { base: baseToken.name, quote: quoteToken.name })
+
+  const alias = parsePairAlias(pairInput)
+  if (alias === null) {
+    throw new InvalidInputError(`pair ${pairInput} not found in spotMeta`)
+  }
+  const pair = findInputUsdhSpotPair(meta, alias)
+  const baseToken = tokens.get(pair.tokens[0])
+  if (baseToken === undefined) {
+    throw new NetworkError(`token metadata missing for pair ${pairInput}`)
+  }
   return {
     pair,
     baseSzDecimals: baseToken.szDecimals,
-    assetIndex: SPOT_ASSET_OFFSET + universePair.index,
+    assetIndex: SPOT_ASSET_OFFSET + pair.index,
+  }
+}
+
+async function resolveOrderCoinNames(info: InfoClient, pairInput?: string): Promise<Set<string>> {
+  if (pairInput !== undefined) {
+    const ctx = await resolvePairContext(info, pairInput)
+    return orderCoinNames(ctx.pair)
+  }
+  const meta = await info.spotMeta()
+  const names = new Set<string>()
+  for (const pair of listUsdhSpotPairs(meta)) {
+    for (const name of orderCoinNames(pair)) {
+      names.add(name)
+    }
+  }
+  return names
+}
+
+function readOptionalPair(input: GetOpenOrdersInput | undefined): string | undefined {
+  if (input === undefined) {
+    return undefined
+  }
+  if (!isRecord(input)) {
+    throw new InvalidInputError('open orders input must be an object')
+  }
+  const { pair } = input
+  if (pair === undefined) {
+    return undefined
+  }
+  assertPairInput(pair)
+  return pair
+}
+
+function assertPairInput(pair: unknown): asserts pair is string {
+  if (typeof pair !== 'string' || pair.length === 0) {
+    throw new InvalidInputError('pair must be a non-empty string')
+  }
+}
+
+function parsePairAlias(pair: string): { base: string; quote: string } | null {
+  const parts = pair.split('/')
+  if (parts.length !== 2) {
+    return null
+  }
+  const base = parts[0]
+  const quote = parts[1]
+  if (base === undefined || quote === undefined || base === '' || quote === '') {
+    return null
+  }
+  return { base, quote }
+}
+
+function findInputUsdhSpotPair(
+  meta: Parameters<typeof findUsdhSpotPair>[0],
+  input: Parameters<typeof findUsdhSpotPair>[1],
+): UsdhPair {
+  try {
+    return findUsdhSpotPair(meta, input)
+  } catch (error) {
+    if (error instanceof NetworkError && error.message.startsWith('pair ')) {
+      throw new InvalidInputError(error.message)
+    }
+    throw error
+  }
+}
+
+function orderCoinNames(pair: UsdhPair): Set<string> {
+  return new Set([pair.name, `${pair.base}/${pair.quote}`])
+}
+
+function orderMatchesPair(order: { coin: string }, pair: UsdhPair): boolean {
+  return orderCoinNames(pair).has(order.coin)
+}
+
+function validateOid(oid: unknown): asserts oid is number {
+  if (!Number.isInteger(oid) || typeof oid !== 'number' || oid < 0) {
+    throw new InvalidInputError('oid must be a non-negative integer')
   }
 }
 

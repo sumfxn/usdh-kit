@@ -4,15 +4,15 @@ import { InvalidInputError } from '../src/errors.js'
 import { createOrders } from '../src/orders.js'
 import type { ExchangeClient } from '../src/transport/exchange.js'
 import type { InfoClient } from '../src/transport/info.js'
-import type { L2Book, SpotMeta } from '../src/transport/types.js'
+import type { L2Book, OpenOrder, OrderStatusResponse, SpotMeta } from '../src/transport/types.js'
 import type { Address } from '../src/types/hex.js'
 import type { Signer } from '../src/types/signer.js'
 
 const meta: SpotMeta = {
   universe: [
-    { name: 'USDH/USDC', tokens: [1, 0], index: 0, isCanonical: true },
-    { name: 'HYPE/USDH', tokens: [2, 1], index: 5, isCanonical: true },
-    { name: 'HYPE/USDC', tokens: [2, 0], index: 9, isCanonical: false },
+    { name: '@230', tokens: [1, 0], index: 230, isCanonical: true },
+    { name: '@232', tokens: [2, 1], index: 232, isCanonical: true },
+    { name: '@999', tokens: [2, 0], index: 999, isCanonical: false },
   ],
   tokens: [
     {
@@ -43,7 +43,7 @@ const meta: SpotMeta = {
 }
 
 const sampleBook: L2Book = {
-  coin: 'HYPE/USDH',
+  coin: '@232',
   time: 1735300000000,
   levels: [[{ px: '40.5', sz: '100', n: 1 }], [{ px: '40.6', sz: '100', n: 1 }]],
 }
@@ -58,7 +58,7 @@ function stubInfo(overrides: Partial<InfoClient> = {}): InfoClient {
     spotClearinghouseState: vi.fn(),
     allMids: vi.fn(),
     frontendOpenOrders: vi.fn(async () => []),
-    orderStatus: vi.fn(),
+    orderStatus: vi.fn(async () => ({ status: 'unknownOid' }) as const),
     ...overrides,
   }
 }
@@ -87,8 +87,37 @@ function exchangeErr(message: string): ExchangeClient {
   return { submit: vi.fn(async () => ({ status: 'err', response: message })) }
 }
 
+function openOrder(coin: string, oid: number): OpenOrder {
+  return {
+    coin,
+    side: 'B',
+    limitPx: '1',
+    sz: '2',
+    origSz: '2',
+    oid,
+    timestamp: 1735300000000,
+    reduceOnly: false,
+    orderType: 'Limit',
+    triggerCondition: 'N/A',
+    triggerPx: '0',
+    isPositionTpsl: false,
+    isTrigger: false,
+  }
+}
+
+function orderStatus(coin: string, oid: number): OrderStatusResponse {
+  return {
+    status: 'order',
+    order: {
+      order: openOrder(coin, oid),
+      status: 'open',
+      statusTimestamp: 1735300000001,
+    },
+  }
+}
+
 describe('placeOrder', () => {
-  it('places a limit order on a USDH-base pair with the correct asset index', async () => {
+  it('places a limit order using a live spot pair name', async () => {
     const exchange = exchangeOk({
       type: 'order',
       data: { statuses: [{ resting: { oid: 7777 } }] },
@@ -103,7 +132,7 @@ describe('placeOrder', () => {
     })
 
     const result = await orders.placeOrder({
-      pair: 'USDH/USDC',
+      pair: '@230',
       side: 'buy',
       size: '10',
       price: '1',
@@ -116,7 +145,7 @@ describe('placeOrder', () => {
       grouping: 'na',
       orders: [
         {
-          a: 10_000,
+          a: 10_230,
           b: true,
           p: '1',
           s: '10',
@@ -127,13 +156,41 @@ describe('placeOrder', () => {
     })
   })
 
+  it('places a limit order using a token-pair alias', async () => {
+    const exchange = exchangeOk({
+      type: 'order',
+      data: { statuses: [{ resting: { oid: 7778 } }] },
+    })
+    const orders = createOrders({
+      info: stubInfo(),
+      exchange,
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+
+    await orders.placeOrder({
+      pair: 'USDH/USDC',
+      side: 'buy',
+      size: '10',
+      price: '1',
+    })
+
+    const [submitArgs] = (exchange.submit as ReturnType<typeof vi.fn>).mock.calls[0] ?? []
+    expect(submitArgs?.action).toMatchObject({
+      orders: [{ a: 10_230, b: true }],
+    })
+  })
+
   it('places a market sell on a USDH-quote pair using slippage-adjusted limit', async () => {
     const exchange = exchangeOk({
       type: 'order',
       data: { statuses: [{ filled: { totalSz: '5', avgPx: '40.5', oid: 8888 } }] },
     })
+    const info = stubInfo()
     const orders = createOrders({
-      info: stubInfo(),
+      info,
       exchange,
       signer: stubSigner(),
       network: 'mainnet',
@@ -148,11 +205,12 @@ describe('placeOrder', () => {
     })
 
     expect(result).toEqual({ oid: 8888, status: 'filled', filledSize: '5', avgPrice: '40.5' })
+    expect(info.l2Book).toHaveBeenCalledWith('@232')
     const [submitArgs] = (exchange.submit as ReturnType<typeof vi.fn>).mock.calls[0] ?? []
     expect(submitArgs?.action).toMatchObject({
       orders: [
         {
-          a: 10_005,
+          a: 10_232,
           b: false,
           s: '5',
           t: { limit: { tif: 'Ioc' } },
@@ -180,7 +238,7 @@ describe('placeOrder', () => {
     ).rejects.toThrow(/USDH as base or quote/)
   })
 
-  it('rejects an unknown pair name', async () => {
+  it('rejects an unknown pair alias', async () => {
     const orders = createOrders({
       info: stubInfo(),
       exchange: exchangeOk({ type: 'order', data: { statuses: [] } }),
@@ -191,6 +249,20 @@ describe('placeOrder', () => {
     })
     await expect(
       orders.placeOrder({ pair: 'NOPE/USDH', side: 'buy', size: '1', price: '1' }),
+    ).rejects.toBeInstanceOf(InvalidInputError)
+  })
+
+  it('rejects fractional slippageBps with an SDK input error', async () => {
+    const orders = createOrders({
+      info: stubInfo(),
+      exchange: exchangeOk({ type: 'order', data: { statuses: [] } }),
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+    await expect(
+      orders.placeOrder({ pair: '@232', side: 'sell', size: '1', slippageBps: 12.5 }),
     ).rejects.toBeInstanceOf(InvalidInputError)
   })
 
@@ -280,7 +352,7 @@ describe('placeOrder', () => {
 })
 
 describe('cancelOrder', () => {
-  it('cancels by oid against the right asset index', async () => {
+  it('cancels by oid using a live pair name', async () => {
     const exchange = exchangeOk({ type: 'cancel', data: { statuses: ['success'] } })
     const orders = createOrders({
       info: stubInfo(),
@@ -290,12 +362,30 @@ describe('cancelOrder', () => {
       accountAddress: ACCOUNT,
       nextNonce: nonceFactory(),
     })
-    const result = await orders.cancelOrder({ pair: 'HYPE/USDH', oid: 12345 })
+    const result = await orders.cancelOrder({ pair: '@232', oid: 12345 })
     expect(result).toEqual({ oid: 12345 })
     const [submitArgs] = (exchange.submit as ReturnType<typeof vi.fn>).mock.calls[0] ?? []
     expect(submitArgs?.action).toEqual({
       type: 'cancel',
-      cancels: [{ a: 10_005, o: 12345 }],
+      cancels: [{ a: 10_232, o: 12345 }],
+    })
+  })
+
+  it('cancels by oid using a token-pair alias', async () => {
+    const exchange = exchangeOk({ type: 'cancel', data: { statuses: ['success'] } })
+    const orders = createOrders({
+      info: stubInfo(),
+      exchange,
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+    await orders.cancelOrder({ pair: 'HYPE/USDH', oid: 12346 })
+    const [submitArgs] = (exchange.submit as ReturnType<typeof vi.fn>).mock.calls[0] ?? []
+    expect(submitArgs?.action).toEqual({
+      type: 'cancel',
+      cancels: [{ a: 10_232, o: 12346 }],
     })
   })
 
@@ -330,7 +420,7 @@ describe('cancelOrder', () => {
     )
   })
 
-  it('rejects a negative oid synchronously', async () => {
+  it('rejects a negative oid', async () => {
     const orders = createOrders({
       info: stubInfo(),
       exchange: exchangeOk({ type: 'cancel', data: { statuses: ['success'] } }),
@@ -346,8 +436,11 @@ describe('cancelOrder', () => {
 })
 
 describe('getOpenOrders / getOrderStatus', () => {
-  it('forwards getOpenOrders to info.frontendOpenOrders with the configured account', async () => {
-    const frontendOpenOrders = vi.fn(async () => [])
+  it('filters getOpenOrders to USDH-bearing spot orders', async () => {
+    const usdhBase = openOrder('@230', 1)
+    const usdhQuoteAlias = openOrder('HYPE/USDH', 2)
+    const nonUsdhSpot = openOrder('@999', 3)
+    const frontendOpenOrders = vi.fn(async () => [usdhBase, usdhQuoteAlias, nonUsdhSpot])
     const orders = createOrders({
       info: stubInfo({ frontendOpenOrders }),
       exchange: exchangeOk({}),
@@ -356,25 +449,92 @@ describe('getOpenOrders / getOrderStatus', () => {
       accountAddress: ACCOUNT,
       nextNonce: nonceFactory(),
     })
-    await orders.getOpenOrders()
+
+    await expect(orders.getOpenOrders()).resolves.toEqual([usdhBase, usdhQuoteAlias])
     expect(frontendOpenOrders).toHaveBeenCalledWith(ACCOUNT)
   })
 
-  it('forwards getOrderStatus to info.orderStatus', async () => {
-    const orderStatus = vi.fn(async () => ({ status: 'unknownOid' }) as const)
+  it('filters getOpenOrders to one USDH pair when requested', async () => {
+    const usdhBase = openOrder('@230', 1)
+    const usdhQuoteAlias = openOrder('HYPE/USDH', 2)
+    const frontendOpenOrders = vi.fn(async () => [usdhBase, usdhQuoteAlias])
     const orders = createOrders({
-      info: stubInfo({ orderStatus }),
+      info: stubInfo({ frontendOpenOrders }),
       exchange: exchangeOk({}),
       signer: stubSigner(),
       network: 'mainnet',
       accountAddress: ACCOUNT,
       nextNonce: nonceFactory(),
     })
-    await orders.getOrderStatus(42)
-    expect(orderStatus).toHaveBeenCalledWith(ACCOUNT, 42)
+
+    await expect(orders.getOpenOrders({ pair: 'USDH/USDC' })).resolves.toEqual([usdhBase])
+    await expect(orders.getOpenOrders({ pair: '@232' })).resolves.toEqual([usdhQuoteAlias])
   })
 
-  it('rejects a negative oid in getOrderStatus', () => {
+  it('fetches getOrderStatus by oid after resolving the requested USDH pair', async () => {
+    const orderStatusClient = vi.fn(async () => orderStatus('@230', 42))
+    const orders = createOrders({
+      info: stubInfo({ orderStatus: orderStatusClient }),
+      exchange: exchangeOk({}),
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+
+    await expect(orders.getOrderStatus({ pair: 'USDH/USDC', oid: 42 })).resolves.toEqual(
+      orderStatus('@230', 42),
+    )
+    expect(orderStatusClient).toHaveBeenCalledWith(ACCOUNT, 42)
+  })
+
+  it('rejects getOrderStatus when the order belongs to a different USDH pair', async () => {
+    const orders = createOrders({
+      info: stubInfo({ orderStatus: vi.fn(async () => orderStatus('@232', 42)) }),
+      exchange: exchangeOk({}),
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+
+    await expect(orders.getOrderStatus({ pair: '@230', oid: 42 })).rejects.toBeInstanceOf(
+      InvalidInputError,
+    )
+  })
+
+  it('rejects getOrderStatus when the order is not a USDH pair', async () => {
+    const orders = createOrders({
+      info: stubInfo({ orderStatus: vi.fn(async () => orderStatus('@999', 42)) }),
+      exchange: exchangeOk({}),
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+
+    await expect(orders.getOrderStatus({ pair: '@230', oid: 42 })).rejects.toThrow(
+      /is not on USDH pair/,
+    )
+  })
+
+  it('returns unknownOid without pair ownership checks', async () => {
+    const orderStatusClient = vi.fn(async () => ({ status: 'unknownOid' }) as const)
+    const orders = createOrders({
+      info: stubInfo({ orderStatus: orderStatusClient }),
+      exchange: exchangeOk({}),
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+
+    await expect(orders.getOrderStatus({ pair: '@230', oid: 42 })).resolves.toEqual({
+      status: 'unknownOid',
+    })
+  })
+
+  it('rejects a negative oid in getOrderStatus', async () => {
     const orders = createOrders({
       info: stubInfo(),
       exchange: exchangeOk({}),
@@ -383,6 +543,8 @@ describe('getOpenOrders / getOrderStatus', () => {
       accountAddress: ACCOUNT,
       nextNonce: nonceFactory(),
     })
-    expect(() => orders.getOrderStatus(-5)).toThrow(InvalidInputError)
+    await expect(orders.getOrderStatus({ pair: '@230', oid: -5 })).rejects.toBeInstanceOf(
+      InvalidInputError,
+    )
   })
 })

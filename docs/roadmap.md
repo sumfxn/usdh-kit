@@ -145,13 +145,16 @@ kit.placeOutcomeOrder({
 Build only the trading primitives needed for USDH markets:
 
 ```ts
-kit.placeOrder(...)
-kit.cancelOrder(...)
-kit.getOpenOrders(...)
-kit.getOrderStatus(...)
+kit.placeOrder({ pair, side, size, price?, tif?, slippageBps? })
+kit.cancelOrder({ pair, oid })
+kit.getOpenOrders({ pair? })
+kit.getOrderStatus({ pair, oid })
 ```
 
 This should be a focused USDH-market order layer, not a full Hyperliquid SDK.
+`pair` accepts the live `listPairs()` name such as `@230` and ergonomic token
+aliases such as `USDH/USDC` or `HYPE/USDH`; reads remain filtered to USDH-bearing
+spot pairs.
 
 ### Scope
 

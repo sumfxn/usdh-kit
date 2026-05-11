@@ -20,6 +20,8 @@ export {
 export type {
   CancelOrderInput,
   CancelOrderResult,
+  GetOpenOrdersInput,
+  GetOrderStatusInput,
   OrderSide,
   PlaceOrderInput,
   PlaceOrderResult,
