@@ -39,6 +39,32 @@ The wallet may show two Rabby prompts:
 
 After the HyperCore credit lands, the approved agent signs the USDH order. The connected wallet should not receive a third popup for the order itself.
 
+## Reverse direction
+
+`USDH -> USDC` is a HyperCore-only spot swap:
+
+```ts
+await kit.swap({
+  from: 'USDH',
+  to: 'USDC',
+  amount: 11_000_000n,
+})
+```
+
+If the user wants USDC back on HyperEVM, call `bridgeFromCore()` after the swap:
+
+```ts
+const swap = await kit.swap({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
+const bridgeOut = await kit.bridgeFromCore({ asset: 'USDC', amount: swap.received })
+console.log(bridgeOut.status, bridgeOut.submittedAt)
+```
+
+`bridgeFromCore()` uses Hyperliquid's user-signed `sendAsset` action to the
+token system address. The HyperEVM recipient is the sender of that Core action,
+so the configured `signer` must be the master account, not an approved agent
+for a separate `accountAddress`. The helper resolves when Hyperliquid accepts
+the action, not when the later HyperEVM credit is confirmed.
+
 ## Progress events
 
 Use `onProgress` for UI state:
@@ -74,7 +100,5 @@ try {
 
 ## Current limitations
 
-* Reverse direction (`USDH -> USDC`) is not part of V1.
-* `bridgeFromCore` is deferred.
 * USDT routing is deferred.
 * Allowance-aware approval skipping is a planned UX optimization.

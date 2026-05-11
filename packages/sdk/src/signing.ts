@@ -22,6 +22,23 @@ const PHANTOM_AGENT_TYPES = {
   ],
 } as const
 
+const USER_SIGNED_DOMAIN_NAME = 'HyperliquidSignTransaction'
+const USER_SIGNED_CHAIN_ID_HEX = '0x66eee'
+const USER_SIGNED_CHAIN_ID = 0x66eee
+
+const SEND_ASSET_TYPES = {
+  'HyperliquidTransaction:SendAsset': [
+    { name: 'hyperliquidChain', type: 'string' },
+    { name: 'destination', type: 'string' },
+    { name: 'sourceDex', type: 'string' },
+    { name: 'destinationDex', type: 'string' },
+    { name: 'token', type: 'string' },
+    { name: 'amount', type: 'string' },
+    { name: 'fromSubAccount', type: 'string' },
+    { name: 'nonce', type: 'uint64' },
+  ],
+} as const
+
 export interface L1Signature {
   r: Hex
   s: Hex
@@ -35,6 +52,18 @@ export interface SignL1ActionArgs {
   network: Network
   vaultAddress?: Address
   expiresAfter?: bigint
+}
+
+export interface SignSendAssetActionArgs {
+  signer: Signer
+  network: Network
+  destination: Address
+  sourceDex: string
+  destinationDex: string
+  token: string
+  amount: string
+  fromSubAccount: string
+  nonce: bigint
 }
 
 /**
@@ -67,6 +96,45 @@ export async function signL1Action(args: SignL1ActionArgs): Promise<L1Signature>
     throw new SigningError('signer.signTypedData rejected', { cause: err })
   }
   return parseSignature(sigHex)
+}
+
+export async function signSendAssetAction(
+  args: SignSendAssetActionArgs,
+): Promise<{ action: Record<string, unknown>; signature: L1Signature }> {
+  const hyperliquidChain = args.network === 'mainnet' ? 'Mainnet' : 'Testnet'
+  const nonce = Number(args.nonce)
+  const message = {
+    hyperliquidChain,
+    destination: args.destination,
+    sourceDex: args.sourceDex,
+    destinationDex: args.destinationDex,
+    token: args.token,
+    amount: args.amount,
+    fromSubAccount: args.fromSubAccount,
+    nonce,
+  }
+  const action = {
+    type: 'sendAsset',
+    signatureChainId: USER_SIGNED_CHAIN_ID_HEX,
+    ...message,
+  }
+  let sigHex: Hex
+  try {
+    sigHex = await args.signer.signTypedData({
+      domain: {
+        name: USER_SIGNED_DOMAIN_NAME,
+        version: '1',
+        chainId: USER_SIGNED_CHAIN_ID,
+        verifyingContract: '0x0000000000000000000000000000000000000000',
+      },
+      types: SEND_ASSET_TYPES,
+      primaryType: 'HyperliquidTransaction:SendAsset',
+      message,
+    })
+  } catch (err) {
+    throw new SigningError('signer.signTypedData rejected', { cause: err })
+  }
+  return { action, signature: parseSignature(sigHex) }
 }
 
 /**

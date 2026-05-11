@@ -1,12 +1,17 @@
 import type { BridgeResult } from './bridge.js'
 
-/** Stablecoins accepted as swap input. */
+/** Stablecoins accepted as swap input on the original acquisition path. */
 export type SourceStable = 'USDC' | 'USDT'
+
+export type SwapAsset = 'USDC' | 'USDH' | 'USDT'
+export type TargetStable = 'USDC' | 'USDH'
 
 export interface SwapInput {
   /** Source stablecoin to spend. */
-  from: SourceStable
-  /** Amount in the source token's smallest unit (6 decimals). */
+  from: SwapAsset
+  /** Target stablecoin. Defaults to USDH for USDC/USDT input and USDC for USDH input. */
+  to?: TargetStable
+  /** Amount in the source token's smallest unit (6 decimals for USDH/USDC). */
   amount: bigint
   /** Override the kit's default `slippageBps` for this call. */
   slippageBps?: number
@@ -30,11 +35,11 @@ export type RouteBlockReason =
   | 'missing_evm_wallet'
 
 export interface HypercoreBalanceInput {
-  asset: SourceStable
+  asset: TargetStable | 'USDT'
 }
 
 export interface HypercoreBalance {
-  asset: SourceStable
+  asset: TargetStable | 'USDT'
   tokenIndex: number
   decimals: number
   /** Total HyperCore balance in native token units. */
@@ -46,7 +51,8 @@ export interface HypercoreBalance {
 }
 
 export interface SwapRoute {
-  from: SourceStable
+  from: SwapAsset
+  to: TargetStable
   amount: bigint
   sourceChain: SourceChain
   requiresBridge: boolean
@@ -87,9 +93,9 @@ export interface BridgeAndSwapResult {
 export interface SwapResult {
   /** Hyperliquid order id as decimal string. */
   orderId: string
-  /** USDH received, smallest unit (6 decimals). */
+  /** Target token received, smallest unit (6 decimals for USDH/USDC). */
   received: bigint
-  /** Source spent, smallest unit. */
+  /** Source token spent, smallest unit (6 decimals for USDH/USDC). */
   spent: bigint
   /** Effective fill price (quote-per-base), fixed-point 18 decimals. */
   price: bigint
@@ -98,12 +104,15 @@ export interface SwapResult {
 }
 
 export interface QuoteInput {
-  from: SourceStable
+  from: SwapAsset
+  to?: TargetStable
   amount: bigint
 }
 
 export interface Quote {
-  /** Estimated USDH out, smallest unit (6 decimals). */
+  from: SwapAsset
+  to: TargetStable
+  /** Estimated target out, smallest unit (6 decimals for USDH/USDC). */
   estimatedReceived: bigint
   /**
    * Mid-price of the on-pair orderbook, quote-token per base-token in 18 decimals.

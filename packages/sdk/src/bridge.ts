@@ -2,17 +2,28 @@ import { encodeCoreDeposit, encodeErc20Approve, encodeErc20Transfer } from './ab
 import { bigintToBytesBE, bytesToHex } from './bytes.js'
 import {
   BridgeTimeoutError,
+  InsufficientBalanceError,
   InvalidInputError,
   MissingEvmWalletError,
   NetworkError,
 } from './errors.js'
+import { signSendAssetAction } from './signing.js'
+import type { ExchangeClient, ExchangeResponse } from './transport/exchange.js'
 import type { InfoClient } from './transport/info.js'
 import type { SpotMeta, SpotToken } from './transport/types.js'
-import type { BridgeAsset, BridgeInput, BridgeResult } from './types/bridge.js'
+import type {
+  BridgeFromCoreAsset,
+  BridgeFromCoreInput,
+  BridgeFromCoreResult,
+  BridgeInput,
+  BridgeResult,
+  BridgeToCoreAsset,
+} from './types/bridge.js'
 import type { EvmWallet } from './types/evm-wallet.js'
 import type { Address, Hex } from './types/hex.js'
 import type { Logger } from './types/logger.js'
 import type { Network } from './types/network.js'
+import type { Signer } from './types/signer.js'
 import { getHyperEvmNativeUsdcAddress } from './usdc.js'
 
 /** HyperEVM chain ids per network. */
@@ -24,7 +35,6 @@ const HYPER_EVM_CHAIN_ID: Record<Network, number> = {
 const DEFAULT_CREDIT_TIMEOUT_MS = 180_000
 const CREDIT_POLL_INTERVAL_MS = 1_000
 const SPOT_DEX_ID = 0xffffffff
-
 const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
 
 export interface BridgeDeps {
@@ -36,6 +46,17 @@ export interface BridgeDeps {
   now?: () => number
   /** Override the polling sleep; injected for tests. */
   sleep?: (ms: number) => Promise<void>
+}
+
+export interface BridgeFromCoreDeps {
+  info: InfoClient
+  exchange: ExchangeClient
+  signer: Signer
+  network: Network
+  logger: Logger
+  accountAddress: Address
+  /** Override `Date.now`; injected for tests. */
+  now?: () => number
 }
 
 /** Lowercase an address so equality checks across HL/EVM sources stay consistent. */
@@ -60,7 +81,10 @@ export function tokenSystemAddress(tokenIndex: number): Address {
   return bytesToHex(sys) as Address
 }
 
-function findStableToken(meta: SpotMeta, asset: BridgeAsset): SpotToken {
+function findStableToken(
+  meta: SpotMeta,
+  asset: BridgeToCoreAsset | BridgeFromCoreAsset,
+): SpotToken {
   const token = meta.tokens.find((t) => t.name === asset)
   if (!token) {
     throw new NetworkError(`${asset} not found in spotMeta`)
@@ -71,7 +95,11 @@ function findStableToken(meta: SpotMeta, asset: BridgeAsset): SpotToken {
   return token
 }
 
-function evmSourceAddress(network: Network, asset: BridgeAsset, linkedContract: Address): Address {
+function evmSourceAddress(
+  network: Network,
+  asset: BridgeToCoreAsset,
+  linkedContract: Address,
+): Address {
   if (asset === 'USDC') {
     return getHyperEvmNativeUsdcAddress(network)
   }
@@ -114,6 +142,50 @@ async function readCoreBalance(
     return 0n
   }
   return parseHcAmount(row.total, weiDecimals)
+}
+
+async function readCoreAvailable(
+  info: InfoClient,
+  user: Address,
+  tokenIndex: number,
+  weiDecimals: number,
+): Promise<{ total: bigint; hold: bigint; available: bigint }> {
+  const state = await info.spotClearinghouseState(user)
+  const row = state.balances.find((b) => b.token === tokenIndex)
+  if (!row) {
+    return { total: 0n, hold: 0n, available: 0n }
+  }
+  const total = parseHcAmount(row.total, weiDecimals)
+  const hold = parseHcAmount(row.hold, weiDecimals)
+  return { total, hold, available: total > hold ? total - hold : 0n }
+}
+
+function scaleAmountExact(amount: bigint, fromDecimals: number, toDecimals: number): bigint {
+  const diff = toDecimals - fromDecimals
+  if (diff >= 0) return amount * 10n ** BigInt(diff)
+  const divisor = 10n ** BigInt(-diff)
+  if (amount % divisor !== 0n) {
+    throw new InvalidInputError('amount has too much precision for the linked HyperCore asset')
+  }
+  return amount / divisor
+}
+
+function sendAssetToken(asset: BridgeFromCoreAsset, token: SpotToken): string {
+  // Circle's HyperCore -> HyperEVM USDC guide uses bare "USDC"; generic linked
+  // spot assets use the broader tokenName:tokenId form from Hyperliquid docs.
+  return asset === 'USDC' ? 'USDC' : `${asset}:${token.tokenId}`
+}
+
+function linkedEvmDecimals(token: SpotToken, asset: BridgeFromCoreAsset): number {
+  const extra = token.evmContract?.evm_extra_wei_decimals
+  if (typeof extra !== 'number' || !Number.isInteger(extra)) {
+    throw new NetworkError(`${asset} has invalid evm_extra_wei_decimals metadata`)
+  }
+  const decimals = token.weiDecimals + extra
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new NetworkError(`${asset} resolved to invalid HyperEVM decimals`)
+  }
+  return decimals
 }
 
 export interface BridgeRunArgs extends BridgeInput {
@@ -211,8 +283,89 @@ export async function runBridgeToCore(
   throw new BridgeTimeoutError(txHash, timeoutMs)
 }
 
+/**
+ * Send a linked spot asset from HyperCore back to HyperEVM by using
+ * Hyperliquid's user-signed `sendAsset` action to the token system address.
+ *
+ * Protocol caveat: the EVM recipient is the sender of the Core action. Because
+ * API wallets/agents are separate users, this helper requires the configured
+ * signer to match `accountAddress`.
+ */
+export async function runBridgeFromCore(
+  args: BridgeFromCoreInput,
+  deps: BridgeFromCoreDeps,
+): Promise<BridgeFromCoreResult> {
+  if (typeof args.amount !== 'bigint' || args.amount <= 0n) {
+    throw new InvalidInputError('amount must be a positive bigint')
+  }
+  if (args.asset !== 'USDC' && args.asset !== 'USDH') {
+    throw new InvalidInputError(`asset must be 'USDC' or 'USDH', got ${String(args.asset)}`)
+  }
+
+  const accountAddress = normalizeAddress(deps.accountAddress)
+  const signerAddress = normalizeAddress(deps.signer.address)
+  if (accountAddress !== signerAddress) {
+    throw new InvalidInputError('bridgeFromCore requires signer.address to match accountAddress')
+  }
+
+  const meta = await deps.info.spotMeta()
+  const token = findStableToken(meta, args.asset)
+  const systemAddress = tokenSystemAddress(token.index)
+  const evmDecimals = linkedEvmDecimals(token, args.asset)
+  const requiredCore = scaleAmountExact(args.amount, evmDecimals, token.weiDecimals)
+  const balance = await readCoreAvailable(deps.info, accountAddress, token.index, token.weiDecimals)
+  if (balance.available < requiredCore) {
+    throw new InsufficientBalanceError(requiredCore, balance.available, args.asset)
+  }
+
+  const submittedAt = deps.now?.() ?? Date.now()
+  const nonce = BigInt(submittedAt)
+  const amount = formatAmount(args.amount, evmDecimals)
+  const tokenWire = sendAssetToken(args.asset, token)
+  const { action, signature } = await signSendAssetAction({
+    signer: deps.signer,
+    network: deps.network,
+    destination: systemAddress,
+    sourceDex: 'spot',
+    destinationDex: 'spot',
+    token: tokenWire,
+    amount,
+    fromSubAccount: '',
+    nonce,
+  })
+
+  deps.logger.debug('bridgeFromCore.signing', {
+    asset: args.asset,
+    amount,
+    systemAddress,
+    token: tokenWire,
+  })
+  const response: ExchangeResponse = await deps.exchange.submit({ action, signature, nonce })
+  if (response.status === 'err') {
+    throw new NetworkError(`exchange error: ${response.response}`)
+  }
+  if (!isDefaultExchangeResponse(response.response)) {
+    throw new NetworkError('unexpected /exchange response shape for sendAsset action')
+  }
+  deps.logger.info('bridgeFromCore.submitted', {
+    asset: args.asset,
+    amount,
+    systemAddress,
+    submittedAt,
+  })
+  return {
+    asset: args.asset,
+    amount: args.amount,
+    status: 'submitted',
+    evmDecimals,
+    systemAddress,
+    recipient: accountAddress,
+    submittedAt,
+  }
+}
+
 async function submitBridgeTransaction(args: {
-  asset: BridgeAsset
+  asset: BridgeToCoreAsset
   amount: bigint
   evmWallet: EvmWallet
   network: Network
@@ -250,4 +403,21 @@ async function sendAndValidate(
     throw new NetworkError(`evmWallet returned malformed tx hash: ${txHashRaw}`)
   }
   return txHashRaw.toLowerCase() as Hex
+}
+
+function formatAmount(amount: bigint, decimals: number): string {
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new InvalidInputError('decimals must be a non-negative integer')
+  }
+  if (decimals === 0) return amount.toString()
+  const padded = amount.toString().padStart(decimals + 1, '0')
+  const intPart = padded.slice(0, -decimals)
+  const fracPart = padded.slice(-decimals).replace(/0+$/, '')
+  return fracPart === '' ? intPart : `${intPart}.${fracPart}`
+}
+
+function isDefaultExchangeResponse(value: unknown): value is { type: 'default' } {
+  return (
+    value !== null && typeof value === 'object' && (value as { type?: unknown }).type === 'default'
+  )
 }

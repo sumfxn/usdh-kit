@@ -42,8 +42,19 @@ const sampleSpotMeta: SpotMeta = {
       index: 1,
       tokenId: '0xbbbb',
       isCanonical: true,
+      evmContract: {
+        address: '0x111111a1a0667d36bd57c0a9f569b98057111111',
+        evm_extra_wei_decimals: -2,
+      },
     },
   ],
+}
+
+const reverseSpotMeta: SpotMeta = {
+  ...sampleSpotMeta,
+  tokens: sampleSpotMeta.tokens.map((token) =>
+    token.name === 'USDH' ? { ...token, szDecimals: 2 } : token,
+  ),
 }
 
 const sampleL2Book: L2Book = {
@@ -81,6 +92,28 @@ function backend(exchangeResponse: unknown): {
     const body = JSON.parse(init?.body as string) as Record<string, unknown>
     if (url.endsWith('/info')) {
       if (body.type === 'spotMeta') return jsonResponse(sampleSpotMeta)
+      if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
+      throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
+    }
+    if (url.endsWith('/exchange')) {
+      exchangeBody = body
+      return jsonResponse(exchangeResponse)
+    }
+    throw new Error(`unexpected url: ${url}`)
+  }) as unknown as typeof fetch
+  return { fetch, getExchangeBody: () => exchangeBody }
+}
+
+function reverseSwapBackend(exchangeResponse: unknown): {
+  fetch: typeof fetch
+  getExchangeBody: () => Record<string, unknown> | undefined
+} {
+  let exchangeBody: Record<string, unknown> | undefined
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString()
+    const body = JSON.parse(init?.body as string) as Record<string, unknown>
+    if (url.endsWith('/info')) {
+      if (body.type === 'spotMeta') return jsonResponse(reverseSpotMeta)
       if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
       throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
     }
@@ -246,6 +279,22 @@ describe('swap', () => {
     await expect(kit.swap({ from: 'USDC', amount: 0n })).rejects.toThrow(InvalidInputError)
   })
 
+  it('rejects full sell slippage before fetching or signing', async () => {
+    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch
+    const signTypedData = vi.fn(stubSigner.signTypedData)
+    const kit = createUsdhKit({
+      network: 'mainnet',
+      signer: { ...stubSigner, signTypedData },
+      fetch,
+    })
+
+    await expect(
+      kit.swap({ from: 'USDH', to: 'USDC', amount: 11_000_000n, slippageBps: 10_000 }),
+    ).rejects.toThrow(/less than 10000/)
+    expect(fetch).not.toHaveBeenCalled()
+    expect(signTypedData).not.toHaveBeenCalled()
+  })
+
   it('throws NotImplementedError for USDT', async () => {
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner })
     await expect(kit.swap({ from: 'USDT', amount: 1_000_000n })).rejects.toThrow(
@@ -296,6 +345,42 @@ describe('swap', () => {
     expect(result.price).toBe(1_000_200_000_000_000_000n)
     expect(result.slippageBps).toBe(2)
     expect('txHash' in result).toBe(false)
+  })
+
+  it('sells USDH for USDC with a slippage-adjusted IOC order', async () => {
+    const filledResponse = {
+      status: 'ok',
+      response: {
+        type: 'order',
+        data: {
+          statuses: [{ filled: { totalSz: '11', avgPx: '1', oid: 54321 } }],
+        },
+      },
+    }
+    const { fetch, getExchangeBody } = reverseSwapBackend(filledResponse)
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    const result = await kit.swap({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
+
+    const body = getExchangeBody()
+    expect(body?.action).toMatchObject({
+      type: 'order',
+      grouping: 'na',
+      orders: [
+        expect.objectContaining({
+          a: 10000,
+          b: false,
+          p: '0.998',
+          r: false,
+          s: '11',
+          t: { limit: { tif: 'Ioc' } },
+        }),
+      ],
+    })
+    expect(result.orderId).toBe('54321')
+    expect(result.received).toBe(11_000_000n)
+    expect(result.spent).toBe(11_000_000n)
+    expect(result.price).toBe(1_000_000_000_000_000_000n)
   })
 
   it('still applies Hyperliquid spot tick rules to per-call slippage limits', async () => {
@@ -395,10 +480,21 @@ describe('getQuote', () => {
     const { fetch } = backend({})
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
     const quote = await kit.getQuote({ from: 'USDC', amount: 1_000_000n })
+    expect(quote.from).toBe('USDC')
+    expect(quote.to).toBe('USDH')
     expect(quote.pair).toBe('USDH/USDC')
     expect(quote.midPrice).toBe(1_000_000_000_000_000_000n)
     expect(quote.estimatedReceived).toBe(1_000_000n)
     expect(quote.validUntil).toBeGreaterThan(Date.now())
+  })
+
+  it('returns USDC estimate for USDH input', async () => {
+    const { fetch } = backend({})
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+    const quote = await kit.getQuote({ from: 'USDH', to: 'USDC', amount: 2_000_000n })
+    expect(quote.from).toBe('USDH')
+    expect(quote.to).toBe('USDC')
+    expect(quote.estimatedReceived).toBe(2_000_000n)
   })
 
   it('caches the pair resolution across quote calls', async () => {
@@ -441,6 +537,52 @@ describe('getRoute', () => {
     expect(route.hypercoreBalance).toBe(2_000_000_000n)
     expect(route.hypercoreTotal).toBe(2_000_000_000n)
     expect(route.hypercoreHold).toBe(0n)
+  })
+
+  it('routes USDH -> USDC as a HyperCore-only swap', async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const body = JSON.parse(init?.body as string) as Record<string, unknown>
+      if (!url.endsWith('/info')) throw new Error(`unexpected url: ${url}`)
+      if (body.type === 'spotMeta') return jsonResponse(reverseSpotMeta)
+      if (body.type === 'l2Book') return jsonResponse(sampleL2Book)
+      if (body.type === 'spotClearinghouseState') {
+        return jsonResponse({
+          balances: [{ coin: 'USDH', token: 1, total: '20', hold: '0', entryNtl: '0' }],
+        })
+      }
+      throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
+    }) as unknown as typeof fetch
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    const route = await kit.getRoute({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
+
+    expect(route.from).toBe('USDH')
+    expect(route.to).toBe('USDC')
+    expect(route.sourceChain).toBe('hypercore')
+    expect(route.requiresBridge).toBe(false)
+    expect(route.canSwap).toBe(true)
+    expect(route.hypercoreBalance).toBe(2_000_000_000n)
+    expect(route.requiredHypercoreBalance).toBe(1_100_000_000n)
+  })
+
+  it('rejects HyperEVM source selection for USDH -> USDC', async () => {
+    const { fetch } = routingBackend({}, ['20'])
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    await expect(
+      kit.getRoute({ from: 'USDH', to: 'USDC', amount: 11_000_000n, sourceChain: 'hyperevm' }),
+    ).rejects.toThrow(/only supports sourceChain=hypercore/)
+  })
+
+  it('rejects full sell slippage during route preflight', async () => {
+    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch
+    const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
+
+    await expect(
+      kit.getRoute({ from: 'USDH', to: 'USDC', amount: 11_000_000n, slippageBps: 10_000 }),
+    ).rejects.toThrow(/less than 10000/)
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('routes through HyperEVM when HC total covers but open-order hold leaves it short', async () => {

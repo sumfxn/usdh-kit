@@ -68,7 +68,15 @@ export {
   isBridgeAndSwapError,
 } from './errors.js'
 
-export type { BridgeAsset, BridgeInput, BridgeResult } from './types/bridge.js'
+export type {
+  BridgeAsset,
+  BridgeFromCoreAsset,
+  BridgeFromCoreInput,
+  BridgeFromCoreResult,
+  BridgeInput,
+  BridgeResult,
+  BridgeToCoreAsset,
+} from './types/bridge.js'
 export type { KitConfig } from './types/config.js'
 export type { EvmTransactionRequest, EvmWallet } from './types/evm-wallet.js'
 export type { Address, Hex } from './types/hex.js'
@@ -93,7 +101,9 @@ export type {
   RouteInput,
   SourceChain,
   SourceStable,
+  SwapAsset,
   SwapInput,
   SwapResult,
   SwapRoute,
+  TargetStable,
 } from './types/swap.js'

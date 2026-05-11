@@ -12,6 +12,8 @@ Hyperliquid-specific terms used across `@usdh-kit/sdk` and `@usdh-kit/widget`.
 
 **Bridge polling** — `bridgeToCore` submits the EVM bridge transaction, then polls `spotClearinghouseState` until the credit lands (default timeout 180s). The kit returns once the credit is confirmed; no extra HyperCore signing needed.
 
+**Bridge out** — `bridgeFromCore` submits a Hyperliquid `sendAsset` action to the linked token system address so a HyperCore spot asset can move back to HyperEVM. The signer must be the same account whose HyperCore balance is being spent.
+
 ## Trading
 
 **Spot pair** — Hyperliquid spot market. Identified by an alias like `@230` (USDH/USDC) and a numeric `assetIndex`. The pair has a base token (USDH), a quote token (USDC), and decimal conventions for both.
