@@ -156,6 +156,40 @@ describe('placeOrder', () => {
     })
   })
 
+  it('preserves the exact live pair index when resolving a live pair name', async () => {
+    const exchange = exchangeOk({
+      type: 'order',
+      data: { statuses: [{ resting: { oid: 7778 } }] },
+    })
+    const duplicateMeta: SpotMeta = {
+      ...meta,
+      universe: [
+        { name: '@111', tokens: [1, 0], index: 111, isCanonical: false },
+        ...meta.universe,
+      ],
+    }
+    const orders = createOrders({
+      info: stubInfo({ spotMeta: vi.fn(async () => duplicateMeta) }),
+      exchange,
+      signer: stubSigner(),
+      network: 'mainnet',
+      accountAddress: ACCOUNT,
+      nextNonce: nonceFactory(),
+    })
+
+    await orders.placeOrder({
+      pair: '@230',
+      side: 'buy',
+      size: '10',
+      price: '1',
+    })
+
+    const [submitArgs] = (exchange.submit as ReturnType<typeof vi.fn>).mock.calls[0] ?? []
+    expect(submitArgs?.action).toMatchObject({
+      orders: [{ a: 10_230, b: true }],
+    })
+  })
+
   it('places a limit order using a token-pair alias', async () => {
     const exchange = exchangeOk({
       type: 'order',

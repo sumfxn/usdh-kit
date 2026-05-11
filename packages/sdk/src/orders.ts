@@ -8,7 +8,7 @@ import {
   isOrderResponse,
 } from './transport/exchange.js'
 import type { InfoClient } from './transport/info.js'
-import type { OpenOrder, OrderStatusResponse } from './transport/types.js'
+import type { OpenOrder, OrderStatusResponse, SpotPair, SpotToken } from './transport/types.js'
 import type { Address } from './types/hex.js'
 import type { Network } from './types/network.js'
 import type { Signer } from './types/signer.js'
@@ -17,6 +17,7 @@ const SPOT_ASSET_OFFSET = 10_000
 const PRICE_DECIMALS = 18
 const ORDER_EXPIRES_AFTER_MS = 30_000n
 const DEFAULT_MARKET_SLIPPAGE_BPS = 50
+const USDH_TOKEN_NAME = 'USDH'
 
 export type OrderSide = 'buy' | 'sell'
 export type Tif = 'Gtc' | 'Ioc' | 'Alo'
@@ -313,7 +314,7 @@ async function resolvePairContext(info: InfoClient, pairInput: string): Promise<
     if (baseToken === undefined || quoteToken === undefined) {
       throw new NetworkError(`token metadata missing for pair ${pairInput}`)
     }
-    const pair = findInputUsdhSpotPair(meta, { base: baseToken.name, quote: quoteToken.name })
+    const pair = usdhPairFromUniversePair(universePair, baseToken, quoteToken)
     return {
       pair,
       baseSzDecimals: baseToken.szDecimals,
@@ -397,6 +398,25 @@ function findInputUsdhSpotPair(
       throw new InvalidInputError(error.message)
     }
     throw error
+  }
+}
+
+function usdhPairFromUniversePair(
+  pair: SpotPair,
+  baseToken: SpotToken,
+  quoteToken: SpotToken,
+): UsdhPair {
+  if (baseToken.name !== USDH_TOKEN_NAME && quoteToken.name !== USDH_TOKEN_NAME) {
+    throw new InvalidInputError(`pair must have ${USDH_TOKEN_NAME} as base or quote`)
+  }
+  return {
+    kind: 'spot',
+    name: pair.name,
+    base: baseToken.name,
+    quote: quoteToken.name,
+    usdhRole: baseToken.name === USDH_TOKEN_NAME ? 'base' : 'quote',
+    index: pair.index,
+    tokens: pair.tokens,
   }
 }
 
