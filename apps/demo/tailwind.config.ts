@@ -19,8 +19,14 @@ const config: Config = {
     extend: {
       colors: widgetTheme?.extend?.colors,
       fontFamily: {
-        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        sans: [
+          'var(--font-geist-sans)',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'sans-serif',
+        ],
+        mono: ['var(--font-geist-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
     },
   },
