@@ -5,7 +5,8 @@ import { bigintToBytesBE, bytesToHex, concatBytes } from '../src/bytes.js'
 import { SigningError } from '../src/errors.js'
 import { encode as msgpackEncode } from '../src/msgpack.js'
 import { computeActionHash, parseSignature, signL1Action } from '../src/signing.js'
-import type { Signer } from '../src/types/signer.js'
+import type { SignTypedDataArgs, Signer } from '../src/types/signer.js'
+import { mockCallArg } from './test-utils.js'
 
 const stubSigner: Signer = {
   address: '0x0000000000000000000000000000000000000001',
@@ -138,16 +139,16 @@ describe('signL1Action', () => {
       network: 'mainnet',
     })
     expect(signTypedData).toHaveBeenCalledOnce()
-    const args = signTypedData.mock.calls[0]?.[0]
-    expect(args?.domain).toEqual({
+    const args = mockCallArg<SignTypedDataArgs>(signTypedData, 0, 0)
+    expect(args.domain).toEqual({
       name: 'Exchange',
       version: '1',
       chainId: 1337,
       verifyingContract: '0x0000000000000000000000000000000000000000',
     })
-    expect(args?.primaryType).toBe('Agent')
-    expect(args?.message.source).toBe('a')
-    expect(args?.message.connectionId).toBe(computeActionHash(orderAction, 1n))
+    expect(args.primaryType).toBe('Agent')
+    expect(args.message.source).toBe('a')
+    expect(args.message.connectionId).toBe(computeActionHash(orderAction, 1n))
   })
 
   it('uses source "b" on testnet', async () => {
@@ -161,8 +162,8 @@ describe('signL1Action', () => {
       nonce: 1n,
       network: 'testnet',
     })
-    const args = signTypedData.mock.calls[0]?.[0]
-    expect(args?.message.source).toBe('b')
+    const args = mockCallArg<SignTypedDataArgs>(signTypedData, 0, 0)
+    expect(args.message.source).toBe('b')
   })
 
   it('commits expiresAfter into the signed connectionId', async () => {
@@ -177,8 +178,8 @@ describe('signL1Action', () => {
       expiresAfter: 31_000n,
       network: 'testnet',
     })
-    const args = signTypedData.mock.calls[0]?.[0]
-    expect(args?.message.connectionId).toBe(computeActionHash(orderAction, 1n, undefined, 31_000n))
+    const args = mockCallArg<SignTypedDataArgs>(signTypedData, 0, 0)
+    expect(args.message.connectionId).toBe(computeActionHash(orderAction, 1n, undefined, 31_000n))
   })
 
   it('returns r/s/v parsed from the signer output', async () => {

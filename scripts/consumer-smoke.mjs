@@ -260,10 +260,9 @@ function symlinkType() {
 function esmConsumerSource() {
   return `import { createRequire } from 'node:module'
 import {
-  createUsdhKit,
-  listUsdhSpotPairs,
+  createOutcomeEventData,
+  createQuoteSummaryData,
   normalizeOutcomeMeta,
-  outcomeCoin,
 } from '@usdh-kit/sdk'
 import { USDHSwap, friendlyError } from '@usdh-kit/widget'
 
@@ -271,16 +270,25 @@ const require = createRequire(import.meta.url)
 const cssPath = require.resolve('@usdh-kit/widget/styles.css')
 const tailwindContent = require('@usdh-kit/widget/tailwind-content')
 
-if (typeof createUsdhKit !== 'function') throw new Error('SDK ESM kit export failed')
-
-const pairs = listUsdhSpotPairs({
-  tokens: [
-    { name: 'USDC', szDecimals: 6, weiDecimals: 8, index: 0, tokenId: '0x0', isCanonical: true, evmContract: null, fullName: null },
-    { name: 'USDH', szDecimals: 6, weiDecimals: 8, index: 150, tokenId: '0x1', isCanonical: false, evmContract: null, fullName: null },
+const pair = {
+  kind: 'spot',
+  name: '@230',
+  base: 'USDH',
+  quote: 'USDC',
+  usdhRole: 'base',
+  index: 230,
+  tokens: [150, 0],
+}
+const book = {
+  coin: '@230',
+  time: 1778427457824,
+  levels: [
+    [{ px: '0.9999', sz: '17000', n: 1 }],
+    [{ px: '1.0001', sz: '14000', n: 1 }],
   ],
-  universe: [{ name: '@230', tokens: [150, 0], index: 230, isCanonical: false }],
-})
-if (pairs[0]?.base !== 'USDH') throw new Error('SDK ESM discovery export failed')
+}
+const quote = createQuoteSummaryData({ pair, book, amount: '250', payAsset: 'USDC' })
+if (quote.receive?.asset !== 'USDH') throw new Error('SDK ESM quote helper failed')
 
 const [market] = normalizeOutcomeMeta({
   outcomes: [
@@ -293,7 +301,8 @@ const [market] = normalizeOutcomeMeta({
   ],
 })
 if (!market) throw new Error('SDK ESM outcome metadata failed')
-if (outcomeCoin(market.outcome, 0) !== '#200') throw new Error('SDK ESM outcome helper failed')
+const event = createOutcomeEventData(market)
+if (event.sides[0].coin !== '#200') throw new Error('SDK ESM outcome helper failed')
 if (typeof USDHSwap !== 'function') throw new Error('Widget ESM export failed')
 if (friendlyError(new Error('boom')) !== 'boom') throw new Error('Widget helper export failed')
 if (!cssPath.replaceAll('\\\\', '/').endsWith('/dist/styles.css')) {
@@ -311,6 +320,7 @@ const widgetCss = require.resolve('@usdh-kit/widget/styles.css')
 const widgetContent = require('@usdh-kit/widget/tailwind-content')
 
 if (typeof sdk.createUsdhKit !== 'function') throw new Error('SDK CJS export failed')
+if (typeof sdk.createQuoteReadiness !== 'function') throw new Error('SDK CJS helper export failed')
 try {
   require('@usdh-kit/widget')
   throw new Error('Widget root unexpectedly allowed CommonJS require')
@@ -333,10 +343,10 @@ if (!Array.isArray(widgetContent) || widgetContent.length === 0) {
 
 function tsConsumerSource() {
   return `import {
-  createUsdhKit,
-  normalizeOutcomeMeta,
-  outcomeCoin,
+  createOutcomeOrderBookSummary,
+  createQuoteSummaryData,
   type L2Book,
+  type QuoteSummaryData,
 } from '@usdh-kit/sdk'
 import { USDHSwap, type USDHSwapProps, type WidgetTheme } from '@usdh-kit/widget'
 import widgetContent = require('@usdh-kit/widget/tailwind-content')
@@ -350,26 +360,20 @@ const book: L2Book = {
   ],
 }
 
-const kitFactory: typeof createUsdhKit = createUsdhKit
-const [market] = normalizeOutcomeMeta({
-  outcomes: [
-    {
-      outcome: 20,
-      name: 'USDH weekly volume clears $5m',
-      description: 'class:volume|asset:USDH|target:5000000',
-      sideSpecs: [{ name: 'Yes' }, { name: 'No' }],
-    },
-  ],
+const quote: QuoteSummaryData = createQuoteSummaryData({
+  pair: { name: '@230', base: 'USDH', quote: 'USDC' },
+  book,
+  amount: '250',
+  payAsset: 'USDC',
 })
-const coin = market ? outcomeCoin(market.outcome, 0) : '#0'
+const summary = createOutcomeOrderBookSummary({ ...book, coin: '#200' })
 const theme: WidgetTheme = 'dark'
 const props: USDHSwapProps = { network: 'mainnet', theme }
 const Widget = USDHSwap
 const content: string[] = widgetContent
 
-void book
-void kitFactory
-void coin
+void quote
+void summary
 void props
 void Widget
 void content

@@ -83,7 +83,7 @@ function jsonResponse(body: unknown): Response {
 }
 
 function backend(exchangeResponse: unknown): {
-  fetch: typeof fetch
+  fetch: typeof globalThis.fetch
   getExchangeBody: () => Record<string, unknown> | undefined
 } {
   let exchangeBody: Record<string, unknown> | undefined
@@ -100,12 +100,12 @@ function backend(exchangeResponse: unknown): {
       return jsonResponse(exchangeResponse)
     }
     throw new Error(`unexpected url: ${url}`)
-  }) as unknown as typeof fetch
+  }) as unknown as typeof globalThis.fetch
   return { fetch, getExchangeBody: () => exchangeBody }
 }
 
 function reverseSwapBackend(exchangeResponse: unknown): {
-  fetch: typeof fetch
+  fetch: typeof globalThis.fetch
   getExchangeBody: () => Record<string, unknown> | undefined
 } {
   let exchangeBody: Record<string, unknown> | undefined
@@ -122,12 +122,12 @@ function reverseSwapBackend(exchangeResponse: unknown): {
       return jsonResponse(exchangeResponse)
     }
     throw new Error(`unexpected url: ${url}`)
-  }) as unknown as typeof fetch
+  }) as unknown as typeof globalThis.fetch
   return { fetch, getExchangeBody: () => exchangeBody }
 }
 
 function outcomeBackend(): {
-  fetch: typeof fetch
+  fetch: typeof globalThis.fetch
   getInfoBodies: () => Record<string, unknown>[]
 } {
   const infoBodies: Record<string, unknown>[] = []
@@ -148,7 +148,7 @@ function outcomeBackend(): {
       return jsonResponse({ '#200': '0.733315', '#201': '0.266685', BTC: '80657' })
     }
     throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
-  }) as unknown as typeof fetch
+  }) as unknown as typeof globalThis.fetch
   return { fetch, getInfoBodies: () => infoBodies }
 }
 
@@ -158,7 +158,7 @@ function routingBackend(
   exchangeResponse: unknown,
   hcBalances: HcBalanceFixture[] = ['0'],
 ): {
-  fetch: typeof fetch
+  fetch: typeof globalThis.fetch
   getExchangeBody: () => Record<string, unknown> | undefined
   getInfoBodies: () => Record<string, unknown>[]
 } {
@@ -188,7 +188,7 @@ function routingBackend(
       return jsonResponse(exchangeResponse)
     }
     throw new Error(`unexpected url: ${url}`)
-  }) as unknown as typeof fetch
+  }) as unknown as typeof globalThis.fetch
   return { fetch, getExchangeBody: () => exchangeBody, getInfoBodies: () => infoBodies }
 }
 
@@ -280,7 +280,7 @@ describe('swap', () => {
   })
 
   it('rejects full sell slippage before fetching or signing', async () => {
-    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch
+    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof globalThis.fetch
     const signTypedData = vi.fn(stubSigner.signTypedData)
     const kit = createUsdhKit({
       network: 'mainnet',
@@ -422,7 +422,7 @@ describe('swap', () => {
       }
       if (typeof body.nonce === 'number') nonces.push(body.nonce)
       return jsonResponse(filledResponse)
-    }) as unknown as typeof fetch
+    }) as unknown as typeof globalThis.fetch
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
     await Promise.all([
@@ -517,7 +517,7 @@ describe('getQuote', () => {
   })
 
   it('validates input before contacting the network', async () => {
-    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch
+    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof globalThis.fetch
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
     await expect(kit.getQuote({ from: 'USDC', amount: 0n })).rejects.toThrow(InvalidInputError)
     expect(fetch).not.toHaveBeenCalled()
@@ -552,7 +552,7 @@ describe('getRoute', () => {
         })
       }
       throw new Error(`unexpected /info body: ${JSON.stringify(body)}`)
-    }) as unknown as typeof fetch
+    }) as unknown as typeof globalThis.fetch
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
     const route = await kit.getRoute({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
@@ -576,7 +576,7 @@ describe('getRoute', () => {
   })
 
   it('rejects full sell slippage during route preflight', async () => {
-    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch
+    const fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof globalThis.fetch
     const kit = createUsdhKit({ network: 'mainnet', signer: stubSigner, fetch })
 
     await expect(

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": false,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noPropertyAccessFromIndexSignature": false,
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["dist", "node_modules"]
+}

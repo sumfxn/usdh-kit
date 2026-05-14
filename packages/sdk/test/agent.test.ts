@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { approveAgent } from '../src/agent.js'
 import { InvalidInputError, NetworkError, SigningError } from '../src/errors.js'
+import type { SignTypedDataArgs } from '../src/types/signer.js'
 import type { Signer } from '../src/types/signer.js'
+import { mockCallArg } from './test-utils.js'
 
 const masterSigner: Signer = {
   address: '0x0000000000000000000000000000000000000001',
@@ -36,22 +38,22 @@ describe('approveAgent', () => {
 
     expect(result.agentAddress).toBe('0x00000000000000000000000000000000000000aa')
     expect(result.agentName).toBe('usdh-kit-session')
-    const typedData = signTypedData.mock.calls[0]?.[0]
-    expect(typedData?.domain).toMatchObject({
+    const typedData = mockCallArg<SignTypedDataArgs>(signTypedData, 0, 0)
+    expect(typedData.domain).toMatchObject({
       name: 'HyperliquidSignTransaction',
       version: '1',
       chainId: 999,
       verifyingContract: '0x0000000000000000000000000000000000000000',
     })
-    expect(typedData?.primaryType).toBe('HyperliquidTransaction:ApproveAgent')
-    expect(typedData?.message).toMatchObject({
+    expect(typedData.primaryType).toBe('HyperliquidTransaction:ApproveAgent')
+    expect(typedData.message).toMatchObject({
       hyperliquidChain: 'Mainnet',
       agentAddress: '0x00000000000000000000000000000000000000aa',
       agentName: 'usdh-kit-session',
     })
 
-    const init = fetch.mock.calls[0]?.[1]
-    const body = JSON.parse(init?.body as string) as Record<string, unknown>
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
     expect(body.action).toMatchObject({
       type: 'approveAgent',
       hyperliquidChain: 'Mainnet',
@@ -73,10 +75,11 @@ describe('approveAgent', () => {
       agentAddress: '0x00000000000000000000000000000000000000aa',
       fetch: fetch as unknown as typeof globalThis.fetch,
     })
-    const typedData = signTypedData.mock.calls[0]?.[0]
-    expect(typedData?.domain.chainId).toBe(421_614)
-    expect(typedData?.message.hyperliquidChain).toBe('Testnet')
-    const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>
+    const typedData = mockCallArg<SignTypedDataArgs>(signTypedData, 0, 0)
+    expect(typedData.domain.chainId).toBe(421_614)
+    expect(typedData.message.hyperliquidChain).toBe('Testnet')
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
     expect((body.action as { signatureChainId?: string }).signatureChainId).toBe('0x66eee')
     expect('agentName' in (body.action as Record<string, unknown>)).toBe(false)
   })

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { InvalidInputError, NetworkError } from '../src/errors.js'
 import { createInfoClient } from '../src/transport/info.js'
 import type { L2Book, OutcomeMeta, SpotMeta } from '../src/transport/types.js'
+import { mockCallArg } from './test-utils.js'
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -82,17 +83,18 @@ describe('createInfoClient', () => {
     const client = createInfoClient({ network: 'mainnet', fetch })
     await client.spotMeta()
     expect(fetch).toHaveBeenCalledOnce()
-    const [url, init] = fetch.mock.calls[0] ?? []
+    const url = mockCallArg<string | URL>(fetch, 0, 0)
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
     expect(url).toBe('https://api.hyperliquid.xyz/info')
-    expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body as string)).toEqual({ type: 'spotMeta' })
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ type: 'spotMeta' })
   })
 
   it('targets the testnet endpoint', async () => {
     const fetch = vi.fn(async () => jsonResponse(sampleSpotMeta))
     const client = createInfoClient({ network: 'testnet', fetch })
     await client.spotMeta()
-    const [url] = fetch.mock.calls[0] ?? []
+    const url = mockCallArg<string | URL>(fetch, 0, 0)
     expect(url).toBe('https://api.hyperliquid-testnet.xyz/info')
   })
 })
@@ -111,8 +113,8 @@ describe('outcomeMeta', () => {
     const fetch = vi.fn(async () => jsonResponse(sampleOutcomeMeta))
     const client = createInfoClient({ network: 'mainnet', fetch })
     const result = await client.outcomeMeta()
-    const [, init] = fetch.mock.calls[0] ?? []
-    expect(JSON.parse(init?.body as string)).toEqual({ type: 'outcomeMeta' })
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    expect(JSON.parse(init.body as string)).toEqual({ type: 'outcomeMeta' })
     expect(result).toEqual(sampleOutcomeMeta)
   })
 
@@ -149,8 +151,8 @@ describe('l2Book', () => {
     const fetch = vi.fn(async () => jsonResponse(sampleL2Book))
     const client = createInfoClient({ network: 'mainnet', fetch })
     await client.l2Book('@230', 5)
-    const [, init] = fetch.mock.calls[0] ?? []
-    expect(JSON.parse(init?.body as string)).toEqual({
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    expect(JSON.parse(init.body as string)).toEqual({
       type: 'l2Book',
       coin: '@230',
       nSigFigs: 5,
@@ -161,8 +163,8 @@ describe('l2Book', () => {
     const fetch = vi.fn(async () => jsonResponse(sampleL2Book))
     const client = createInfoClient({ network: 'mainnet', fetch })
     await client.l2Book('@230')
-    const [, init] = fetch.mock.calls[0] ?? []
-    expect(JSON.parse(init?.body as string)).toEqual({
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    expect(JSON.parse(init.body as string)).toEqual({
       type: 'l2Book',
       coin: '@230',
       nSigFigs: null,
@@ -197,8 +199,8 @@ describe('allMids', () => {
     const fetch = vi.fn(async () => jsonResponse({ BTC: '60000', '@0': '1.0001' }))
     const client = createInfoClient({ network: 'mainnet', fetch })
     const result = await client.allMids()
-    const [, init] = fetch.mock.calls[0] ?? []
-    expect(JSON.parse(init?.body as string)).toEqual({ type: 'allMids' })
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    expect(JSON.parse(init.body as string)).toEqual({ type: 'allMids' })
     expect(result).toEqual({ BTC: '60000', '@0': '1.0001' })
   })
 
@@ -230,8 +232,8 @@ describe('frontendOpenOrders', () => {
     const fetch = vi.fn(async () => jsonResponse([sampleOpenOrder]))
     const client = createInfoClient({ network: 'mainnet', fetch })
     const result = await client.frontendOpenOrders('0x000000000000000000000000000000000000abcd')
-    const [, init] = fetch.mock.calls[0] ?? []
-    expect(JSON.parse(init?.body as string)).toEqual({
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    expect(JSON.parse(init.body as string)).toEqual({
       type: 'frontendOpenOrders',
       user: '0x000000000000000000000000000000000000abcd',
     })
@@ -257,8 +259,8 @@ describe('orderStatus', () => {
     const fetch = vi.fn(async () => jsonResponse({ status: 'order', order: orderDetail }))
     const client = createInfoClient({ network: 'mainnet', fetch })
     const result = await client.orderStatus('0x000000000000000000000000000000000000abcd', 91490942)
-    const [, init] = fetch.mock.calls[0] ?? []
-    expect(JSON.parse(init?.body as string)).toEqual({
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    expect(JSON.parse(init.body as string)).toEqual({
       type: 'orderStatus',
       user: '0x000000000000000000000000000000000000abcd',
       oid: 91490942,
