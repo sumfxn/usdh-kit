@@ -15,6 +15,8 @@ separately only when your app imports SDK APIs directly.
 
 The widget reads the connected wallet from wagmi. Wrap your tree in `WagmiProvider` and `QueryClientProvider` (e.g. via ConnectKit or RainbowKit) before rendering it.
 
+The root widget entry is ESM-only because the React wallet stack it composes is ESM-first. CommonJS projects can still load `@usdh-kit/widget/styles.css` and `@usdh-kit/widget/tailwind-content`, but should import the widget from an ESM module or through their app bundler.
+
 ```tsx
 import { USDHSwap } from '@usdh-kit/widget'
 import '@usdh-kit/widget/styles.css'

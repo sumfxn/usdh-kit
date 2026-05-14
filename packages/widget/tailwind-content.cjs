@@ -15,6 +15,6 @@ const path = require('node:path')
  * (Tailwind v3 does not deep-merge `content` arrays from presets, so this
  * is exposed as a plain array instead of a preset object.)
  */
-const widgetDir = path.dirname(require.resolve('@usdh-kit/widget'))
+const widgetDir = __dirname.replaceAll(path.sep, path.posix.sep)
 
-module.exports = [`${widgetDir}/**/*.{js,cjs,mjs}`]
+module.exports = [`${widgetDir}/dist/**/*.{js,mjs}`]

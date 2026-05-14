@@ -14,7 +14,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     if: github.repository == 'sumfxn/usdh-kit' && vars.RELEASES_ENABLED == 'true'
     permissions:
       contents: write
@@ -35,6 +35,7 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm smoke:consumer
       - name: Verify npm publish credentials
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
