@@ -8,6 +8,7 @@ import {
   createExchangeClient,
   isOrderResponse,
 } from '../src/transport/exchange.js'
+import { mockCallArg } from './test-utils.js'
 
 const sig: L1Signature = {
   r: '0xc0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0',
@@ -57,7 +58,7 @@ describe('createExchangeClient', () => {
     const fetch = vi.fn(async () => jsonResponse(okFilled))
     const client = createExchangeClient({ network: 'mainnet', fetch })
     await client.submit({ action, signature: sig, nonce: 1n })
-    const [url] = fetch.mock.calls[0] ?? []
+    const url = mockCallArg<string | URL>(fetch, 0, 0)
     expect(url).toBe('https://api.hyperliquid.xyz/exchange')
   })
 
@@ -65,7 +66,7 @@ describe('createExchangeClient', () => {
     const fetch = vi.fn(async () => jsonResponse(okFilled))
     const client = createExchangeClient({ network: 'testnet', fetch })
     await client.submit({ action, signature: sig, nonce: 1n })
-    const [url] = fetch.mock.calls[0] ?? []
+    const url = mockCallArg<string | URL>(fetch, 0, 0)
     expect(url).toBe('https://api.hyperliquid-testnet.xyz/exchange')
   })
 
@@ -73,9 +74,9 @@ describe('createExchangeClient', () => {
     const fetch = vi.fn(async () => jsonResponse(okFilled))
     const client = createExchangeClient({ network: 'mainnet', fetch })
     await client.submit({ action, signature: sig, nonce: 1735300000000n })
-    const init = fetch.mock.calls[0]?.[1]
-    expect(init?.method).toBe('POST')
-    const body = JSON.parse(init?.body as string) as Record<string, unknown>
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
     expect(body).toEqual({
       action,
       nonce: 1735300000000,
@@ -88,8 +89,8 @@ describe('createExchangeClient', () => {
     const client = createExchangeClient({ network: 'mainnet', fetch })
     const vault = '0x000000000000000000000000000000000000abcd'
     await client.submit({ action, signature: sig, nonce: 1n, vaultAddress: vault })
-    const init = fetch.mock.calls[0]?.[1]
-    const body = JSON.parse(init?.body as string) as { vaultAddress?: string }
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    const body = JSON.parse(init.body as string) as { vaultAddress?: string }
     expect(body.vaultAddress).toBe(vault)
   })
 
@@ -97,8 +98,8 @@ describe('createExchangeClient', () => {
     const fetch = vi.fn(async () => jsonResponse(okFilled))
     const client = createExchangeClient({ network: 'mainnet', fetch })
     await client.submit({ action, signature: sig, nonce: 1n, expiresAfter: 31_000n })
-    const init = fetch.mock.calls[0]?.[1]
-    const body = JSON.parse(init?.body as string) as { expiresAfter?: number }
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    const body = JSON.parse(init.body as string) as { expiresAfter?: number }
     expect(body.expiresAfter).toBe(31_000)
   })
 
@@ -106,8 +107,8 @@ describe('createExchangeClient', () => {
     const fetch = vi.fn(async () => jsonResponse(okFilled))
     const client = createExchangeClient({ network: 'mainnet', fetch })
     await client.submit({ action, signature: sig, nonce: 1n })
-    const init = fetch.mock.calls[0]?.[1]
-    const body = JSON.parse(init?.body as string) as Record<string, unknown>
+    const init = mockCallArg<RequestInit>(fetch, 0, 1)
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
     expect('vaultAddress' in body).toBe(false)
   })
 })

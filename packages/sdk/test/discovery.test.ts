@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createDiscovery, findUsdhSpotPair, listUsdhSpotPairs } from '../src/discovery.js'
 import { NetworkError } from '../src/errors.js'
 import type { InfoClient } from '../src/transport/info.js'
-import type { SpotMeta } from '../src/transport/types.js'
+import type { L2Book, SpotMeta } from '../src/transport/types.js'
 
 const meta: SpotMeta = {
   universe: [
@@ -176,7 +176,9 @@ describe('createDiscovery', () => {
   })
 
   it('forwards getBook to info.l2Book with nSigFigs', async () => {
-    const l2Book = vi.fn(async () => ({ coin: 'USDH/USDC', time: 1, levels: [[], []] }))
+    const l2Book = vi.fn(
+      async (): Promise<L2Book> => ({ coin: 'USDH/USDC', time: 1, levels: [[], []] }),
+    )
     const discovery = createDiscovery(stubInfo({ l2Book }))
     await discovery.getBook('USDH/USDC', { nSigFigs: 5 })
     expect(l2Book).toHaveBeenCalledWith('USDH/USDC', 5)

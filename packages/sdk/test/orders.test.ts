@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { InvalidInputError } from '../src/errors.js'
 import { createOrders } from '../src/orders.js'
-import type { ExchangeClient } from '../src/transport/exchange.js'
+import type { ExchangeClient, ExchangeResponse } from '../src/transport/exchange.js'
 import type { InfoClient } from '../src/transport/info.js'
 import type { L2Book, OpenOrder, OrderStatusResponse, SpotMeta } from '../src/transport/types.js'
 import type { Address } from '../src/types/hex.js'
@@ -80,11 +80,13 @@ function nonceFactory() {
 }
 
 function exchangeOk(response: unknown): ExchangeClient {
-  return { submit: vi.fn(async () => ({ status: 'ok', response })) }
+  return { submit: vi.fn(async (): Promise<ExchangeResponse> => ({ status: 'ok', response })) }
 }
 
 function exchangeErr(message: string): ExchangeClient {
-  return { submit: vi.fn(async () => ({ status: 'err', response: message })) }
+  return {
+    submit: vi.fn(async (): Promise<ExchangeResponse> => ({ status: 'err', response: message })),
+  }
 }
 
 function openOrder(coin: string, oid: number): OpenOrder {

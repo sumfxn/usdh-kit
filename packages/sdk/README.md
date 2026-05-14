@@ -201,6 +201,139 @@ const outcomeMids = await kit.getOutcomeMids()
 console.log(market.name, yesBook.coin, outcomeMids[market.sides[0].coin])
 ```
 
+## Experimental HIP-4 builder helpers
+
+The SDK also exports public, experimental, headless helpers for app builders.
+They do not render React components; they turn raw SDK reads into UI-ready data
+contracts for HIP-4 event cards, market rows, side selectors, order books,
+positions, plus USDH quote guards and order drafts.
+
+These helpers are additive and read-only/draft-only. Until `1.0.0`, treat the
+exact return shapes as pre-release API, but prefer them over app-local parsing:
+they centralize side-coin encoding, quote health checks, decimal-safe position
+math, and signer-ready order draft validation.
+The core builder examples are mirrored in SDK tests so package examples fail
+fast if helper signatures drift.
+
+```ts
+import {
+  createInfoClient,
+  createOutcomeEventData,
+  createOutcomeMarketRows,
+  createOutcomeOrderBookLevels,
+  createOutcomeOrderBookSummary,
+  createOutcomePositionData,
+  createOutcomePositionDataFromSide,
+  createOutcomePositionRows,
+  createOutcomeSideSelection,
+  createQuoteReadiness,
+  createQuoteSummaryData,
+  createSpotOrderDraft,
+  resolveOutcomeMarketSide,
+} from '@usdh-kit/sdk'
+
+const info = createInfoClient({ network: 'mainnet' })
+const [pair] = await kit.listPairs()
+const pairBook = pair ? await kit.getBook(pair.name, { nSigFigs: 5 }) : null
+const readiness = createQuoteReadiness({
+  pair,
+  book: pairBook,
+  maxSpreadBps: 10,
+  minSideDepth: 1000,
+})
+const quoteSummary = createQuoteSummaryData({
+  pair,
+  book: pairBook,
+  amount: '250',
+  payAsset: 'USDC',
+  maxSpreadBps: 10,
+  minSideDepth: 1000,
+})
+
+const markets = await kit.listOutcomeMarkets()
+const [market] = markets
+const yesBook = await kit.getOutcomeBook({ outcome: market.outcome, side: 0, nSigFigs: 5 })
+const noBook = await kit.getOutcomeBook({ outcome: market.outcome, side: 1, nSigFigs: 5 })
+const outcomeMids = await kit.getOutcomeMids()
+const accountState = await info.spotClearinghouseState(accountAddress)
+
+const event = createOutcomeEventData(market, [{ book: yesBook }, { book: noBook }])
+const marketRows = createOutcomeMarketRows({
+  markets,
+  readsByCoin: {
+    [market.sides[0].coin]: { book: yesBook },
+    [market.sides[1].coin]: { book: noBook },
+  },
+})
+const selectedSide = createOutcomeSideSelection({
+  market,
+  selected: market.sides[0].coin,
+  reads: [{ book: yesBook }, { book: noBook }],
+})
+const sideBook = createOutcomeOrderBookLevels(yesBook)
+const sideBookSummary = createOutcomeOrderBookSummary(yesBook)
+const position = createOutcomePositionData({
+  market,
+  side: market.sides[0].coin,
+  quantity: '125.0',
+})
+const held = createOutcomePositionDataFromSide({
+  markets,
+  side: '#201',
+  quantity: '4.2',
+})
+const resolvedSide = resolveOutcomeMarketSide([market], '+200')
+const portfolioRows = createOutcomePositionRows({
+  markets,
+  balances: accountState.balances,
+  marks: outcomeMids,
+})
+
+const ticket = createSpotOrderDraft({
+  pair,
+  side: 'buy',
+  size: '25',
+  price: readiness.bestAsk,
+  readiness,
+  sizeDecimals: 2,
+  priceDecimals: 6,
+  minNotional: 10,
+  availableQuote: '100',
+})
+```
+
+Use these helpers when building custom prediction-market UI on top of HIP-4:
+the parent app still owns routing, refresh intervals, wallet state, and any
+write boundary. `createSpotOrderDraft()` returns checks and a `placeOrderInput`
+shape for a wallet-gated handoff, but it never signs or submits. It can also
+validate draft-only concerns such as TIF, slippage, precision, minimum size,
+minimum notional, and available balance before the signer path is enabled.
+HIP-4 helpers are read-only in this release; the SDK order layer still scopes
+signed order methods to USDH-bearing spot pairs.
+
+Builder flow for HIP-4 apps:
+
+1. Read `outcomeMeta()` or `kit.listOutcomeMarkets()`, then normalize markets.
+2. Render discovery/feed rows with `createOutcomeMarketRows()`.
+3. Render market cards with `createOutcomeEventData()`.
+4. Resolve controlled side selection with `createOutcomeSideSelection()`.
+5. Inspect side liquidity with `getOutcomeBook()` plus `createOutcomeOrderBookSummary()`.
+6. Resolve account balances into readable positions with `createOutcomePositionRows()`.
+7. Keep routing, cache freshness, wallet state, PnL, settlement, and any writes in the parent app.
+
+Package boundaries:
+
+| Layer | Import today | Owns |
+| --- | --- | --- |
+| `@usdh-kit/sdk` | Read clients, USDH spot discovery, HIP-4 metadata, order methods, and builder data helpers. | Typed reads, normalization, checks, and signer-ready input shapes. |
+| `@usdh-kit/widget` | The drop-in USDH swap widget. | A packaged swap UI with wallet-gated writes. |
+| `apps/demo` registry | Copy/paste React patterns only. | Example component composition, docs, and visual states. |
+| Your app | Your product shell. | Routing, cache policy, wallet/session state, balances, PnL, settlement, and final writes. |
+
+No React hooks or HIP-4 UI package is published in this release. A future
+`@usdh-kit/react` package, if added, should stay hooks-only with optional cache
+adapters and no bundled visual design system.
+
 ## Trade USDH spot pairs
 
 The order layer is scoped to USDH-bearing spot pairs. `pair` accepts the live
