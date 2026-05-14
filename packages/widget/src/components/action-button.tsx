@@ -7,6 +7,7 @@ export function ActionButton(props: {
   phase: ActionPhase
   insufficient: boolean
   belowMinOrderValue: boolean
+  isConnected: boolean
   requiresBridge: boolean
   sourceChain: SourceChain
   needsTradingSession: boolean
@@ -17,6 +18,7 @@ export function ActionButton(props: {
     phase,
     insufficient,
     belowMinOrderValue,
+    isConnected,
     requiresBridge,
     sourceChain,
     needsTradingSession,
@@ -46,6 +48,8 @@ export function ActionButton(props: {
         `Insufficient ${sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} USDC`
       ) : belowMinOrderValue ? (
         'Minimum 11 USDC'
+      ) : !isConnected ? (
+        'Connect wallet to swap'
       ) : needsTradingSession ? (
         'Enable trading session'
       ) : requiresBridge ? (

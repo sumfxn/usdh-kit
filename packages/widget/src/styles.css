@@ -19,6 +19,9 @@
  */
 
 .usdh-widget {
+  width: 100%;
+  max-width: min(480px, calc(100vw - 2rem));
+
   /* Surfaces */
   --usdh-bg: 255 255 255; /* #ffffff — outer card background */
   --usdh-surface: 250 250 250; /* #fafafa — pay/receive cards */
@@ -45,6 +48,13 @@
   --usdh-chip-bg: 245 245 245; /* #f5f5f5 — chip resting */
   --usdh-chip-active-bg: 23 23 23; /* #171717 — chip active */
   --usdh-chip-active-text: 250 250 250; /* #fafafa — chip active text */
+}
+
+@media (max-width: 420px) {
+  .usdh-widget {
+    width: calc(100vw - 4rem);
+    max-width: calc(100vw - 4rem);
+  }
 }
 
 .usdh-widget.dark {

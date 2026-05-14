@@ -74,6 +74,7 @@ export function useUsdcBalances(
 
   const tokenQuery = useQuery({
     queryKey: ['usdh-kit', network, 'stable-token-info'],
+    enabled: Boolean(address),
     queryFn: async () => resolveStableTokens(network, await info.spotMeta()),
     staleTime: 5 * 60_000,
   })
