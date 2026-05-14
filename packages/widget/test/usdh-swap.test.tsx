@@ -145,9 +145,23 @@ vi.mock('@usdh-kit/sdk', () => ({
     bridgeAndSwap: mockBridgeAndSwap,
   }),
   createInfoClient: () => ({
-    spotMeta: vi.fn(),
+    spotMeta: vi.fn(async () => ({})),
+    l2Book: vi.fn(async () => ({
+      coin: '@230',
+      levels: [[{ px: '0.9999', sz: '10', n: 1 }], [{ px: '1.0001', sz: '10', n: 1 }]],
+    })),
     spotClearinghouseState: vi.fn(),
   }),
+  listUsdhSpotPairs: () => [
+    {
+      name: '@230',
+      label: 'USDH/USDC',
+      index: 230,
+      base: 'USDH',
+      quote: 'USDC',
+      usdhRole: 'base',
+    },
+  ],
   getHyperEvmNativeUsdcAddress: () => '0xb88339cb7199b77e23db6e890353e22632ba630f',
   BridgeAndSwapError: class extends Error {
     phase: string
@@ -258,14 +272,17 @@ describe('USDHSwap', () => {
     expect(screen.getByRole('button', { name: 'Testnet' })).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('renders the connect prompt when no wallet is connected', () => {
+  it('renders the swap form when no wallet is connected', () => {
     mockUseAccount.mockReturnValue({ isConnected: false })
     mockUseWalletClient.mockReturnValue({ data: undefined })
     mockUseChainId.mockReturnValue(0)
 
     render(<USDHSwap network="testnet" />)
 
-    expect(screen.getByText(/Connect a wallet on HyperEVM Testnet/)).toBeInTheDocument()
+    expect(screen.getByText('You pay')).toBeInTheDocument()
+    expect(screen.getByText('You receive')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect wallet to swap' })).toBeDisabled()
+    expect(screen.queryByText(/Connect a wallet on HyperEVM Testnet/)).not.toBeInTheDocument()
   })
 
   it('syncs the internal network when the required network prop changes', () => {
@@ -278,7 +295,7 @@ describe('USDHSwap', () => {
 
     rerender(<USDHSwap network="testnet" />)
     expect(screen.getByRole('button', { name: 'Testnet' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText(/Connect a wallet on HyperEVM Testnet/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect wallet to swap' })).toBeDisabled()
   })
 
   it('renders the wrong-network row with a Switch button when chain id mismatches', () => {

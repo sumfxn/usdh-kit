@@ -1,11 +1,16 @@
 'use client'
 
-import { BridgeTimeoutError, isBridgeAndSwapError } from '@usdh-kit/sdk'
+import {
+  BridgeTimeoutError,
+  createInfoClient,
+  isBridgeAndSwapError,
+  listUsdhSpotPairs,
+} from '@usdh-kit/sdk'
 import type { Quote, SwapRoute } from '@usdh-kit/sdk'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useChainId, useSwitchChain } from 'wagmi'
 
-import { HYPER_EVM_CHAIN_ID, networkLabel } from './chains.js'
+import { HYPER_EVM_CHAIN_ID } from './chains.js'
 import { ActionButton } from './components/action-button.js'
 import { ArrowDivider } from './components/arrow-divider.js'
 import { BalanceRow } from './components/balance-row.js'
@@ -32,6 +37,8 @@ const USDC_DECIMALS = 6
 const MIN_SWAP_AMOUNT = 10_000_001n
 const MIN_SWAP_DISPLAY = '11'
 const QUOTE_DEBOUNCE_MS = 400
+const READ_ONLY_QUOTE_TIMEOUT_MS = 1_500
+const PRICE_DECIMALS = 18
 
 type Phase = 'idle' | 'approving' | 'bridging' | 'swapping' | 'done'
 
@@ -83,6 +90,8 @@ export function USDHSwap(props: USDHSwapProps) {
   const [quote, setQuote] = useState<Quote | null>(null)
   const [route, setRoute] = useState<SwapRoute | null>(null)
   const [isQuoting, setIsQuoting] = useState(false)
+  const [readOnlyEstimate, setReadOnlyEstimate] = useState<bigint | null>(null)
+  const [isReadOnlyQuoting, setIsReadOnlyQuoting] = useState(false)
   const [result, setResult] = useState<SwapResultPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [bridgeStartedAt, setBridgeStartedAt] = useState<number | null>(null)
@@ -165,6 +174,43 @@ export function USDHSwap(props: USDHSwapProps) {
     }, QUOTE_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [kit, parsedAmount, slippageBps, manualSource, onWrongChain, balanceRefreshKey])
+
+  useEffect(() => {
+    setReadOnlyEstimate(null)
+    if (isConnected || onWrongChain || parsedAmount === null || parsedAmount <= 0n) {
+      setIsReadOnlyQuoting(false)
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setIsReadOnlyQuoting(true)
+      try {
+        const info = createInfoClient({ network, timeoutMs: READ_ONLY_QUOTE_TIMEOUT_MS })
+        const pairs = listUsdhSpotPairs(await info.spotMeta())
+        const pair =
+          pairs.find((candidate) => candidate.base === 'USDH' && candidate.quote === 'USDC') ??
+          pairs[0]
+        if (!pair) return
+        const book = await info.l2Book(pair.name)
+        const ask = book.levels[1]?.[0]?.px
+        if (!ask) return
+        const askPrice18 = parseUnits(ask, PRICE_DECIMALS)
+        if (askPrice18 <= 0n) return
+        const nextEstimate = (parsedAmount * 10n ** BigInt(PRICE_DECIMALS)) / askPrice18
+        if (!cancelled) setReadOnlyEstimate(nextEstimate)
+      } catch {
+        if (!cancelled) setReadOnlyEstimate(null)
+      } finally {
+        if (!cancelled) setIsReadOnlyQuoting(false)
+      }
+    }, QUOTE_DEBOUNCE_MS)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [isConnected, network, onWrongChain, parsedAmount])
 
   const hcCovers = route?.sourceChain === 'hypercore' && route.canSwap
 
@@ -304,16 +350,20 @@ export function USDHSwap(props: USDHSwapProps) {
   // in the headline — the slippage tolerance is the user-facing knob.
   const receiveDisplay = quote
     ? trimReceive(quote.estimatedReceived, USDC_DECIMALS)
-    : parsedAmount && parsedAmount > 0n
-      ? trimReceive(parsedAmount, USDC_DECIMALS)
-      : '0'
+    : readOnlyEstimate !== null
+      ? trimReceive(readOnlyEstimate, USDC_DECIMALS)
+      : parsedAmount && parsedAmount > 0n
+        ? trimReceive(parsedAmount, USDC_DECIMALS)
+        : '0'
 
   const payUsdValue = parsedAmount ? formatUsd(parsedAmount, USDC_DECIMALS) : null
   const receiveBigint = quote
     ? quote.estimatedReceived
-    : parsedAmount && parsedAmount > 0n
-      ? parsedAmount
-      : null
+    : readOnlyEstimate !== null
+      ? readOnlyEstimate
+      : parsedAmount && parsedAmount > 0n
+        ? parsedAmount
+        : null
   const receiveUsdValue = receiveBigint ? formatUsd(receiveBigint, USDC_DECIMALS) : null
 
   // Active source drives the MAX button.
@@ -339,12 +389,13 @@ export function USDHSwap(props: USDHSwapProps) {
   }
 
   const showInlineNote =
-    requiresBridge && parsedAmount !== null && parsedAmount > 0n && phase === 'idle'
+    isConnected && requiresBridge && parsedAmount !== null && parsedAmount > 0n && phase === 'idle'
 
   return (
     <div
       data-theme={effectiveTheme}
-      className={`usdh-widget mx-auto w-full max-w-[480px] rounded-2xl border border-usdh-border bg-usdh-bg/70 p-4 shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset] backdrop-blur ${effectiveTheme === 'dark' ? 'dark' : ''}`}
+      className={`usdh-widget mx-auto min-w-0 w-full rounded-2xl border border-usdh-border bg-usdh-bg/70 p-4 shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset] backdrop-blur ${effectiveTheme === 'dark' ? 'dark' : ''}`}
+      style={{ maxWidth: 'min(480px, calc(100vw - 2rem))' }}
     >
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-usdh-text">Swap to USDH</h3>
@@ -353,88 +404,81 @@ export function USDHSwap(props: USDHSwapProps) {
         )}
       </div>
 
-      {!isConnected ? (
-        <p className="mt-6 rounded-xl border border-usdh-border/60 bg-usdh-bg/50 p-5 text-center text-xs text-usdh-text-soft">
-          Connect a wallet on {networkLabel(network)} to continue.
-        </p>
-      ) : (
+      {onWrongChain && (
+        <WrongNetworkBanner
+          onSwitch={() => switchChain({ chainId: expectedChainId })}
+          isSwitching={isSwitching}
+        />
+      )}
+
+      {isConnected && <BalanceRow balances={balances} sourceChain={sourceChain} />}
+
+      <div className="mt-3">
+        <PayCard
+          amountStr={amountStr}
+          onAmountChange={setAmountStr}
+          inputDisabled={inputDisabled}
+          sourceChain={sourceChain}
+          onSourceToggle={toggleSourceChain}
+          payUsdValue={payUsdValue}
+          hasMaxBalance={hasMaxBalance}
+          onMax={setMaxAmount}
+        />
+        <ArrowDivider />
+        <ReceiveCard
+          receiveDisplay={receiveDisplay}
+          receiveUsdValue={receiveUsdValue}
+          isQuoting={isQuoting || isReadOnlyQuoting}
+          hasQuote={quote !== null || readOnlyEstimate !== null}
+        />
+      </div>
+
+      {!showingResult && (
         <>
-          {onWrongChain && (
-            <WrongNetworkBanner
-              onSwitch={() => switchChain({ chainId: expectedChainId })}
-              isSwitching={isSwitching}
-            />
+          {insufficientForRoute && (
+            <p className="mt-2 text-[11px] text-usdh-text-soft">
+              Exceeds your {sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} USDC balance.
+            </p>
+          )}
+          {belowMinOrderValue && (
+            <p className="mt-2 text-[11px] text-usdh-text-soft">
+              Hyperliquid spot orders need more than 10 USDC. Use {MIN_SWAP_DISPLAY}+ USDC.
+            </p>
           )}
 
-          <BalanceRow balances={balances} sourceChain={sourceChain} />
+          <SlippageRow
+            slippageBps={slippageBps}
+            onPreset={applySlippagePreset}
+            showCustom={showCustomSlippage}
+            onToggleCustom={() => setShowCustomSlippage((v) => !v)}
+            customStr={customSlippageStr}
+            onCustomChange={applyCustomSlippage}
+            disabled={inputDisabled}
+          />
 
-          <div className="mt-3">
-            <PayCard
-              amountStr={amountStr}
-              onAmountChange={setAmountStr}
-              inputDisabled={inputDisabled}
-              sourceChain={sourceChain}
-              onSourceToggle={toggleSourceChain}
-              payUsdValue={payUsdValue}
-              hasMaxBalance={hasMaxBalance}
-              onMax={setMaxAmount}
-            />
-            <ArrowDivider />
-            <ReceiveCard
-              receiveDisplay={receiveDisplay}
-              receiveUsdValue={receiveUsdValue}
-              isQuoting={isQuoting}
-              hasQuote={quote !== null}
-            />
-          </div>
+          <ActionButton
+            phase={phase}
+            insufficient={insufficientForRoute}
+            belowMinOrderValue={belowMinOrderValue}
+            isConnected={isConnected}
+            requiresBridge={requiresBridge}
+            sourceChain={sourceChain}
+            needsTradingSession={!sessionReady}
+            disabled={!canSwap}
+            onClick={executeBridgeAndSwap}
+          />
 
-          {!showingResult && (
-            <>
-              {insufficientForRoute && (
-                <p className="mt-2 text-[11px] text-usdh-text-soft">
-                  Exceeds your {sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} USDC balance.
-                </p>
-              )}
-              {belowMinOrderValue && (
-                <p className="mt-2 text-[11px] text-usdh-text-soft">
-                  Hyperliquid spot orders need more than 10 USDC. Use {MIN_SWAP_DISPLAY}+ USDC.
-                </p>
-              )}
-
-              <SlippageRow
-                slippageBps={slippageBps}
-                onPreset={applySlippagePreset}
-                showCustom={showCustomSlippage}
-                onToggleCustom={() => setShowCustomSlippage((v) => !v)}
-                customStr={customSlippageStr}
-                onCustomChange={applyCustomSlippage}
-                disabled={inputDisabled}
-              />
-
-              <ActionButton
-                phase={phase}
-                insufficient={insufficientForRoute}
-                belowMinOrderValue={belowMinOrderValue}
-                requiresBridge={requiresBridge}
-                sourceChain={sourceChain}
-                needsTradingSession={!sessionReady}
-                disabled={!canSwap}
-                onClick={executeBridgeAndSwap}
-              />
-
-              {phase === 'bridging' && (
-                <p className="mt-2 text-center text-[11px] leading-snug text-usdh-text-faint">
-                  Bridging usually credits in about 1-2 minutes. Checking HyperCore credit for{' '}
-                  <span className="font-mono text-usdh-text-soft">{bridgeElapsedSeconds}s</span>.
-                </p>
-              )}
-              {showInlineNote && <InlineSystemAddressNote />}
-            </>
+          {phase === 'bridging' && (
+            <p className="mt-2 text-center text-[11px] leading-snug text-usdh-text-faint">
+              Bridging usually credits in about 1-2 minutes. Checking HyperCore credit for{' '}
+              <span className="font-mono text-usdh-text-soft">{bridgeElapsedSeconds}s</span>.
+            </p>
           )}
-          {error && <ErrorAlert message={error} />}
-          {result && <ResultPanel result={result} onReset={reset} />}
+          {showInlineNote && <InlineSystemAddressNote />}
         </>
       )}
+      {error && <ErrorAlert message={error} />}
+      {result && <ResultPanel result={result} onReset={reset} />}
 
       {!hideAttribution && (
         <div className="mt-3 border-t border-usdh-border pt-2.5">
