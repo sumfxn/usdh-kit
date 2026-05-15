@@ -298,7 +298,11 @@ function PairSelect({
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{pair.label}</span>
                   <span className="mt-1 block text-xs text-neutral-500">
-                    {pair.role === 'base' ? 'USDH base' : 'USDH quote'}
+                    {pair.role === undefined
+                      ? 'USDC quote'
+                      : pair.role === 'base'
+                        ? 'USDH base'
+                        : 'USDH quote'}
                   </span>
                 </span>
                 <span className="self-center text-right text-sm tabular-nums">{pair.mid}</span>
