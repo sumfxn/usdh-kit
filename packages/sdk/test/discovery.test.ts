@@ -162,9 +162,38 @@ describe('createDiscovery', () => {
     expect(info.spotMeta).toHaveBeenCalledOnce()
   })
 
-  it('filters listPairs to USDH-quote pairs when requested', async () => {
+  it('defaults listPairs to USDC-quoted pairs', async () => {
+    const discovery = createDiscovery(stubInfo())
+    // @230 = USDH/USDC (quote USDC) and HYPE/USDC (quote USDC) are both USDC-quoted.
+    expect((await discovery.listPairs()).map((p) => p.name)).toEqual(['@230', 'HYPE/USDC'])
+  })
+
+  it('returns USDC-quoted pairs when quote is explicitly USDC', async () => {
+    const discovery = createDiscovery(stubInfo())
+    expect((await discovery.listPairs({ quote: 'USDC' })).map((p) => p.name)).toEqual([
+      '@230',
+      'HYPE/USDC',
+    ])
+  })
+
+  it('filters listPairs to USDH-quote pairs when requested (legacy path)', async () => {
     const discovery = createDiscovery(stubInfo())
     expect((await discovery.listPairs({ quote: 'USDH' })).map((p) => p.name)).toEqual(['@232'])
+  })
+
+  it('resolves getPair for a non-USDH pair (HYPE/USDC)', async () => {
+    const discovery = createDiscovery(stubInfo())
+    const pair = await discovery.getPair({ base: 'HYPE', quote: 'USDC' })
+    expect(pair.name).toBe('HYPE/USDC')
+    expect(pair.base).toBe('HYPE')
+    expect(pair.quote).toBe('USDC')
+    expect(pair.usdhRole).toBeUndefined()
+  })
+
+  it('resolves getPair for USDH-bearing pairs (legacy)', async () => {
+    const discovery = createDiscovery(stubInfo())
+    const pair = await discovery.getPair({ base: 'HYPE', quote: 'USDH' })
+    expect(pair.usdhRole).toBe('quote')
   })
 
   it('rejects unsupported pair kinds', async () => {
@@ -184,13 +213,20 @@ describe('createDiscovery', () => {
     expect(l2Book).toHaveBeenCalledWith('USDH/USDC', 5)
   })
 
-  it('returns the raw allMids map when no quote filter is set', async () => {
-    const allMids = vi.fn(async () => ({ BTC: '60000', '@0': '1.0001' }))
+  it('defaults getMids to USDC-quoted pairs', async () => {
+    const allMids = vi.fn(async () => ({ BTC: '60000', '@230': '1.0001', 'HYPE/USDC': '28.5' }))
     const discovery = createDiscovery(stubInfo({ allMids }))
-    expect(await discovery.getMids()).toEqual({ BTC: '60000', '@0': '1.0001' })
+    // @230 (USDH/USDC) and HYPE/USDC are both USDC-quoted in the fixture.
+    expect(await discovery.getMids()).toEqual({ '@230': '1.0001', 'HYPE/USDC': '28.5' })
   })
 
-  it('filters mids to USDH-quote pairs and rekeys by pair name', async () => {
+  it('filters mids to USDC-quoted pairs when quote is explicitly USDC', async () => {
+    const allMids = vi.fn(async () => ({ 'HYPE/USDC': '28.5', '@232': '42.5' }))
+    const discovery = createDiscovery(stubInfo({ allMids }))
+    expect(await discovery.getMids({ quote: 'USDC' })).toEqual({ 'HYPE/USDC': '28.5' })
+  })
+
+  it('filters mids to USDH-quote pairs and rekeys by pair name (legacy)', async () => {
     const allMids = vi.fn(async () => ({
       BTC: '60000',
       '@230': '1.0001',

@@ -1,4 +1,4 @@
-import { type UsdhPair, findUsdhSpotPair, listUsdhSpotPairs } from './discovery.js'
+import type { UsdhPair } from './discovery.js'
 import { InvalidInputError, NetworkError } from './errors.js'
 import { formatDecimal, formatSpotPrice, midPrice18, parseDecimal } from './pricing.js'
 import { signL1Action } from './signing.js'
@@ -8,7 +8,13 @@ import {
   isOrderResponse,
 } from './transport/exchange.js'
 import type { InfoClient } from './transport/info.js'
-import type { OpenOrder, OrderStatusResponse, SpotPair, SpotToken } from './transport/types.js'
+import type {
+  OpenOrder,
+  OrderStatusResponse,
+  SpotMeta,
+  SpotPair,
+  SpotToken,
+} from './transport/types.js'
 import type { Address } from './types/hex.js'
 import type { Network } from './types/network.js'
 import type { Signer } from './types/signer.js'
@@ -23,7 +29,7 @@ export type OrderSide = 'buy' | 'sell'
 export type Tif = 'Gtc' | 'Ioc' | 'Alo'
 
 export interface PlaceOrderInput {
-  /** USDH-bearing spot pair. Accepts `listPairs()` names like `@230` or aliases like `USDH/USDC`. */
+  /** Spot pair to trade. Accepts `listPairs()` names like `@230` or token-pair aliases like `HYPE/USDC` or `USDH/USDC`. */
   pair: string
   side: OrderSide
   /** Size in base-token units, decimal string (e.g. "1.5"). */
@@ -49,7 +55,7 @@ export interface PlaceOrderResult {
 }
 
 export interface CancelOrderInput {
-  /** USDH-bearing spot pair. Accepts `listPairs()` names like `@230` or aliases like `USDH/USDC`. */
+  /** Spot pair the order belongs to. Accepts `listPairs()` names like `@230` or token-pair aliases like `HYPE/USDC`. */
   pair: string
   /** Order id to cancel. */
   oid: number
@@ -60,12 +66,12 @@ export interface CancelOrderResult {
 }
 
 export interface GetOpenOrdersInput {
-  /** Optional USDH-bearing spot pair filter. Accepts the same formats as `placeOrder`. */
+  /** Optional spot pair filter. Accepts the same formats as `placeOrder`. */
   pair?: string
 }
 
 export interface GetOrderStatusInput {
-  /** USDH-bearing spot pair the order is expected to belong to. */
+  /** Spot pair the order is expected to belong to. */
   pair: string
   /** Order id to inspect. */
   oid: number
@@ -88,9 +94,9 @@ interface PairContext {
 }
 
 /**
- * Build a Track 3 USDH-only order layer on top of the existing transport.
- * Lookups go through `findUsdhSpotPair` so callers cannot place orders on
- * pairs where USDH is neither base nor quote.
+ * Build a general spot order layer on top of the existing transport. Resolves
+ * any spot pair from `spotMeta`, including USDC-quoted pairs. USDH-bearing
+ * pairs remain fully supported as a legacy path.
  */
 export function createOrders(deps: OrdersDeps): {
   placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult>
@@ -216,16 +222,13 @@ export function createOrders(deps: OrdersDeps): {
 
     async getOpenOrders(input) {
       const pair = readOptionalPair(input)
-      const pairFilter = pair === undefined ? null : await resolveOrderCoinNames(deps.info, pair)
       const openOrders = await deps.info.frontendOpenOrders(deps.accountAddress)
-      if (pairFilter !== null) {
-        return openOrders.filter((order) => pairFilter.has(order.coin))
+      if (pair === undefined) {
+        // No pair filter: return all open orders across any spot pair.
+        return openOrders
       }
-      if (openOrders.length === 0) {
-        return []
-      }
-      const usdhCoins = await resolveOrderCoinNames(deps.info)
-      return openOrders.filter((order) => usdhCoins.has(order.coin))
+      const pairFilter = await resolveOrderCoinNames(deps.info, pair)
+      return openOrders.filter((order) => pairFilter.has(order.coin))
     },
 
     async getOrderStatus(input) {
@@ -241,7 +244,7 @@ export function createOrders(deps: OrdersDeps): {
         return status
       }
       if (!orderMatchesPair(status.order.order, ctx.pair)) {
-        throw new InvalidInputError(`order ${oid} is not on USDH pair ${ctx.pair.name}`)
+        throw new InvalidInputError(`order ${oid} is not on pair ${ctx.pair.name}`)
       }
       return status
     },
@@ -307,6 +310,10 @@ async function resolvePairContext(info: InfoClient, pairInput: string): Promise<
   assertPairInput(pairInput)
   const meta = await info.spotMeta()
   const tokens = new Map(meta.tokens.map((t) => [t.index, t]))
+  const usdhIndex = meta.tokens.find((t) => t.name === USDH_TOKEN_NAME)?.index
+
+  // Fast path: the input is an `@<index>` or canonical name found directly in
+  // the universe list. Accepts any spot pair, not only USDH-bearing ones.
   const universePair = meta.universe.find((p) => p.name === pairInput)
   if (universePair !== undefined) {
     const baseToken = tokens.get(universePair.tokens[0])
@@ -314,7 +321,7 @@ async function resolvePairContext(info: InfoClient, pairInput: string): Promise<
     if (baseToken === undefined || quoteToken === undefined) {
       throw new NetworkError(`token metadata missing for pair ${pairInput}`)
     }
-    const pair = usdhPairFromUniversePair(universePair, baseToken, quoteToken)
+    const pair = anySpotPairToUsdhPair(universePair, baseToken, quoteToken, usdhIndex)
     return {
       pair,
       baseSzDecimals: baseToken.szDecimals,
@@ -322,11 +329,13 @@ async function resolvePairContext(info: InfoClient, pairInput: string): Promise<
     }
   }
 
+  // Alias path: the input is `BASE/QUOTE`. Search across all spot pairs so
+  // that USDC-quoted pairs (e.g. HYPE/USDC) resolve in addition to USDH pairs.
   const alias = parsePairAlias(pairInput)
   if (alias === null) {
     throw new InvalidInputError(`pair ${pairInput} not found in spotMeta`)
   }
-  const pair = findInputUsdhSpotPair(meta, alias)
+  const pair = findAnySpotPairByAlias(meta, alias)
   const baseToken = tokens.get(pair.tokens[0])
   if (baseToken === undefined) {
     throw new NetworkError(`token metadata missing for pair ${pairInput}`)
@@ -338,19 +347,9 @@ async function resolvePairContext(info: InfoClient, pairInput: string): Promise<
   }
 }
 
-async function resolveOrderCoinNames(info: InfoClient, pairInput?: string): Promise<Set<string>> {
-  if (pairInput !== undefined) {
-    const ctx = await resolvePairContext(info, pairInput)
-    return orderCoinNames(ctx.pair)
-  }
-  const meta = await info.spotMeta()
-  const names = new Set<string>()
-  for (const pair of listUsdhSpotPairs(meta)) {
-    for (const name of orderCoinNames(pair)) {
-      names.add(name)
-    }
-  }
-  return names
+async function resolveOrderCoinNames(info: InfoClient, pairInput: string): Promise<Set<string>> {
+  const ctx = await resolvePairContext(info, pairInput)
+  return orderCoinNames(ctx.pair)
 }
 
 function readOptionalPair(input: GetOpenOrdersInput | undefined): string | undefined {
@@ -387,37 +386,51 @@ function parsePairAlias(pair: string): { base: string; quote: string } | null {
   return { base, quote }
 }
 
-function findInputUsdhSpotPair(
-  meta: Parameters<typeof findUsdhSpotPair>[0],
-  input: Parameters<typeof findUsdhSpotPair>[1],
-): UsdhPair {
-  try {
-    return findUsdhSpotPair(meta, input)
-  } catch (error) {
-    if (error instanceof NetworkError && error.message.startsWith('pair ')) {
-      throw new InvalidInputError(error.message)
-    }
-    throw error
-  }
-}
-
-function usdhPairFromUniversePair(
+/**
+ * Build a `UsdhPair` from any universe pair and its resolved tokens. Sets
+ * `usdhRole` when one of the tokens is USDH; omits it otherwise (compatible
+ * with `exactOptionalPropertyTypes`).
+ * This is the general (non-USDH-restricted) version used by order resolution.
+ */
+function anySpotPairToUsdhPair(
   pair: SpotPair,
   baseToken: SpotToken,
   quoteToken: SpotToken,
+  usdhIndex: number | undefined,
 ): UsdhPair {
-  if (baseToken.name !== USDH_TOKEN_NAME && quoteToken.name !== USDH_TOKEN_NAME) {
-    throw new InvalidInputError(`pair must have ${USDH_TOKEN_NAME} as base or quote`)
-  }
-  return {
+  const base: UsdhPair = {
     kind: 'spot',
     name: pair.name,
     base: baseToken.name,
     quote: quoteToken.name,
-    usdhRole: baseToken.name === USDH_TOKEN_NAME ? 'base' : 'quote',
     index: pair.index,
     tokens: pair.tokens,
   }
+  if (usdhIndex !== undefined && pair.tokens[0] === usdhIndex) {
+    return { ...base, usdhRole: 'base' }
+  }
+  if (usdhIndex !== undefined && pair.tokens[1] === usdhIndex) {
+    return { ...base, usdhRole: 'quote' }
+  }
+  return base
+}
+
+/**
+ * Search all spot pairs in `spotMeta` by `BASE/QUOTE` alias. Accepts any
+ * quote token (USDC, USDH, or other). Throws `InvalidInputError` if not found.
+ */
+function findAnySpotPairByAlias(meta: SpotMeta, alias: { base: string; quote: string }): UsdhPair {
+  const tokens = new Map(meta.tokens.map((t) => [t.index, t]))
+  const usdhIndex = meta.tokens.find((t) => t.name === USDH_TOKEN_NAME)?.index
+  for (const universePair of meta.universe) {
+    const baseToken = tokens.get(universePair.tokens[0])
+    const quoteToken = tokens.get(universePair.tokens[1])
+    if (baseToken === undefined || quoteToken === undefined) continue
+    if (baseToken.name === alias.base && quoteToken.name === alias.quote) {
+      return anySpotPairToUsdhPair(universePair, baseToken, quoteToken, usdhIndex)
+    }
+  }
+  throw new InvalidInputError(`pair ${alias.base}/${alias.quote} not found in spotMeta`)
 }
 
 function orderCoinNames(pair: UsdhPair): Set<string> {

@@ -115,13 +115,23 @@ export interface UsdhKit {
    * account because the HyperEVM recipient is the sender of the Core action.
    */
   bridgeFromCore(input: BridgeFromCoreInput): Promise<BridgeFromCoreResult>
-  /** List USDH-bearing spot pairs from `spotMeta`. Cached after the first call. */
+  /**
+   * List spot pairs from `spotMeta`. Defaults to USDC-quoted pairs. Pass
+   * `{ quote: 'USDH' }` to get the legacy USDH-quoted pair list instead.
+   * Cached after the first call.
+   */
   listPairs(opts?: ListUsdhPairsOpts): Promise<UsdhPair[]>
-  /** Find one USDH-bearing spot pair by base/quote token names. */
+  /**
+   * Find one spot pair by base/quote token names. Works for any quote token
+   * (USDC, USDH, or other); not restricted to USDH-bearing pairs.
+   */
   getPair(input: GetUsdhPairInput): Promise<UsdhPair>
   /** Fetch the L2 book for a live pair name, usually `@<spotIndex>`. */
   getBook(pair: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
-  /** Fetch mid prices, optionally filtered to USDH-quote pairs. */
+  /**
+   * Fetch mid prices filtered by quote token. Defaults to USDC-quoted pairs.
+   * Pass `{ quote: 'USDH' }` to get mids for USDH-quoted pairs instead.
+   */
   getMids(opts?: GetMidsOpts): Promise<Record<string, string>>
   /** List experimental read-only outcome markets from Hyperliquid outcome metadata. */
   listOutcomeMarkets(): Promise<UsdhOutcomeMarket[]>
@@ -131,19 +141,20 @@ export interface UsdhKit {
   getOutcomeBook(input: GetOutcomeBookInput): Promise<L2Book>
   /** Fetch mid prices keyed by encoded outcome side coin, e.g. `#200`. */
   getOutcomeMids(): Promise<Record<string, string>>
-  /** Place a USDH-pair spot order. Accepts `listPairs()` names or token aliases like `USDH/USDC`. */
+  /** Place a spot order on any pair. Accepts `listPairs()` names or token-pair aliases like `HYPE/USDC` or `USDH/USDC`. */
   placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult>
-  /** Cancel a resting USDH-pair order by oid. */
+  /** Cancel a resting spot order by oid. */
   cancelOrder(input: CancelOrderInput): Promise<CancelOrderResult>
-  /** List the user's USDH-pair resting open orders, optionally filtered to one pair. */
+  /** List the user's resting open orders. Without a pair filter, returns all open orders. */
   getOpenOrders(input?: GetOpenOrdersInput): Promise<OpenOrder[]>
-  /** Fetch a single USDH-pair order's status by pair and oid. */
+  /** Fetch a single spot order's status by pair and oid. */
   getOrderStatus(input: GetOrderStatusInput): Promise<OrderStatusResponse>
 }
 
 /**
- * Create a kit bound to a network and signer. Validates input synchronously
- * and lazily resolves the USDH/USDC pair on first call.
+ * Create a kit bound to a network and signer. Validates input synchronously.
+ * Discovery defaults to USDC-quoted pairs; pass `{ quote: 'USDH' }` to the
+ * discovery methods to access the legacy USDH-quoted pair list.
  */
 export function createUsdhKit(config: KitConfig): UsdhKit {
   validateConfig(config)

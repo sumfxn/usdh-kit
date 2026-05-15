@@ -15,7 +15,8 @@ export interface GalleryPair {
   name: string
   label: string
   index: number
-  role: 'base' | 'quote'
+  /** USDH's role in the pair. Absent for USDC-quoted pairs with no USDH leg. */
+  role?: 'base' | 'quote'
   mid: string
 }
 
@@ -242,7 +243,7 @@ function toGalleryPair(pair: UsdhPair, mids: Record<string, string>): GalleryPai
     name: pair.name,
     label: `${pair.base}/${pair.quote}`,
     index: pair.index,
-    role: pair.usdhRole,
+    ...(pair.usdhRole !== undefined && { role: pair.usdhRole }),
     mid: mids[pair.name] ?? mids[`@${pair.index}`] ?? '-',
   }
 }
