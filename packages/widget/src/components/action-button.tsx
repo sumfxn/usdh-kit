@@ -13,6 +13,8 @@ export function ActionButton(props: {
   needsTradingSession: boolean
   disabled: boolean
   onClick: () => void
+  /** Pay-side token ticker shown in balance/minimum labels. Defaults to `'USDC'`. */
+  payTicker?: 'USDC' | 'USDH'
 }) {
   const {
     phase,
@@ -24,6 +26,7 @@ export function ActionButton(props: {
     needsTradingSession,
     disabled,
     onClick,
+    payTicker = 'USDC',
   } = props
   return (
     <button
@@ -45,9 +48,9 @@ export function ActionButton(props: {
           <Spinner /> Swapping
         </>
       ) : insufficient ? (
-        `Insufficient ${sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} USDC`
+        `Insufficient ${sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} ${payTicker}`
       ) : belowMinOrderValue ? (
-        'Minimum 11 USDC'
+        `Minimum 11 ${payTicker}`
       ) : !isConnected ? (
         'Connect wallet to swap'
       ) : needsTradingSession ? (

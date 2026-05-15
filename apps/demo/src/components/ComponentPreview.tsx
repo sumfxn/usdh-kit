@@ -34,6 +34,10 @@ const UsdhWidgetPreview = dynamic<SnapshotPreviewProps>(
   () => import('./registry/previews/widget').then((module) => module.UsdhWidgetPreview),
   { loading: PreviewLoading },
 )
+const UsdhMigrationPreview = dynamic<StaticPreviewProps>(
+  () => import('./registry/previews/widget').then((module) => module.UsdhMigrationPreview),
+  { loading: PreviewLoading },
+)
 const MarketBoardPreview = dynamic<MarketPreviewProps>(
   () => import('./registry/previews/market-board').then((module) => module.MarketBoardPreview),
   { loading: PreviewLoading },
@@ -70,6 +74,8 @@ export function ComponentPreview({
   switch (slug) {
     case 'usdh-widget':
       return <UsdhWidgetPreview snapshot={snapshot} size={size} previewId={previewId} />
+    case 'usdh-migration':
+      return <UsdhMigrationPreview size={size} previewId={previewId} />
     case 'market-board':
       return (
         <MarketBoardPreview

@@ -3,8 +3,13 @@ import type { SwapResultPayload } from '../types.js'
 
 const USDC_DECIMALS = 6
 
-export function ResultPanel(props: { result: SwapResultPayload; onReset: () => void }) {
-  const { result, onReset } = props
+export function ResultPanel(props: {
+  result: SwapResultPayload
+  onReset: () => void
+  /** Received-token ticker shown in the receipt. Defaults to `'USDH'` for USDHSwap. */
+  receiveTicker?: 'USDC' | 'USDH'
+}) {
+  const { result, onReset, receiveTicker = 'USDH' } = props
   return (
     <div className="mt-3 rounded-xl border border-usdh-border bg-usdh-surface/50 p-3 text-[11px]">
       <div className="flex items-start justify-between gap-3">
@@ -14,7 +19,7 @@ export function ResultPanel(props: { result: SwapResultPayload; onReset: () => v
           </p>
           <p className="mt-2 text-[10px] uppercase tracking-wider text-usdh-text-faint">Received</p>
           <p className="mt-0.5 font-mono text-base text-usdh-text">
-            {trimReceive(result.receivedUsdh, USDC_DECIMALS)} USDH
+            {trimReceive(result.receivedUsdh, USDC_DECIMALS)} {receiveTicker}
           </p>
         </div>
         <button

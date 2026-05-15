@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   BookOpen,
   Boxes,
   Braces,
@@ -16,6 +17,7 @@ export type RegistryDataMode = 'sample' | 'live'
 
 export type ComponentSlug =
   | 'usdh-widget'
+  | 'usdh-migration'
   | 'market-board'
   | 'quote-readiness'
   | 'outcome-reads'
@@ -151,6 +153,52 @@ export function SwapCard({ context }) {
     },
     installCommand: 'pnpm add @usdh-kit/widget wagmi viem',
     composition: 'Use USDHSwap as the write boundary and place read-only quote context around it.',
+  },
+  {
+    slug: 'usdh-migration',
+    title: 'USDH Migration',
+    shortTitle: 'Migration',
+    eyebrow: 'Drop-in exit',
+    category: 'Widget',
+    description:
+      'The packaged exit component for USDH to USDC: convert a HyperCore USDH balance back to USDC as USDH is sunset.',
+    icon: ArrowLeftRight,
+    tags: ['widget', 'migration', 'usdh', 'usdc', 'exit'],
+    liveCapable: true,
+    visible: true,
+    snippets: [
+      {
+        title: 'Render migration widget',
+        language: 'tsx',
+        code: `'use client'
+
+import { USDHMigration } from '@usdh-kit/widget'
+import '@usdh-kit/widget/styles.css'
+
+export function UsdhMigrationEntry() {
+  return <USDHMigration network="mainnet" defaultAmount="250" theme="auto" />
+}`,
+      },
+    ],
+    useCase: {
+      usedFor: 'Wallet exit flows, USDH wind-down banners, and balance migration prompts.',
+      reads: 'HyperCore USDH balance, USDH/USDC pair, and the sell-side receive estimate.',
+      doesNot:
+        'Bridge to HyperEVM, change the widget API, or submit swaps before wallet/session state.',
+    },
+    usage: {
+      title: 'USDH exit entry',
+      language: 'tsx',
+      code: `export function MigrationEntry() {
+  return (
+    <section aria-label="Migrate USDH to USDC">
+      <USDHMigration network="mainnet" defaultAmount="250" />
+    </section>
+  )
+}`,
+    },
+    installCommand: 'pnpm add @usdh-kit/widget wagmi viem',
+    composition: 'Use USDHMigration as the write boundary for the USDH wind-down exit path.',
   },
   {
     slug: 'market-board',
@@ -1067,7 +1115,7 @@ export const visibleComponentEntries = componentEntries.filter((entry) => entry.
 export const componentSections: ComponentSection[] = [
   {
     title: 'USDH',
-    items: ['usdh-widget', 'market-board', 'quote-readiness'],
+    items: ['usdh-widget', 'usdh-migration', 'market-board', 'quote-readiness'],
   },
   {
     title: 'HIP-4',
