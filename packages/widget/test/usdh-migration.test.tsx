@@ -71,6 +71,7 @@ vi.mock('@tanstack/react-query', () => ({
 const mockPreflightSwap = vi.fn()
 const mockSwap = vi.fn()
 const mockApproveAgent = vi.fn()
+const mockKitGetBook = vi.fn()
 const mockL2Book = vi.fn()
 const mockListUsdhSpotPairs = vi.fn()
 
@@ -120,11 +121,13 @@ function makeRoute(
   }
 }
 
-function makeSwapResult(overrides: Partial<{ orderId: string; received: bigint }> = {}) {
+function makeSwapResult(
+  overrides: Partial<{ orderId: string; received: bigint; spent: bigint }> = {},
+) {
   return {
     orderId: overrides.orderId ?? 'order-42',
     received: overrides.received ?? 11_000_000n,
-    spent: 11_000_000n,
+    spent: overrides.spent ?? 11_000_000n,
     price: 1_000_000_000_000_000_000n,
     slippageBps: 0,
   }
@@ -135,6 +138,7 @@ vi.mock('@usdh-kit/sdk', () => ({
   createUsdhKit: () => ({
     preflightSwap: mockPreflightSwap,
     swap: mockSwap,
+    getBook: mockKitGetBook,
   }),
   createInfoClient: () => ({
     spotMeta: vi.fn(async () => ({})),
@@ -219,9 +223,13 @@ describe('USDHMigration', () => {
     mockHcQueryData.mockReturnValue(undefined)
     mockPreflightSwap.mockResolvedValue(makeRoute())
     mockSwap.mockResolvedValue(makeSwapResult())
+    mockKitGetBook.mockResolvedValue({
+      coin: '@230',
+      levels: [[{ px: '0.9999', sz: '20', n: 1 }], [{ px: '1.0001', sz: '20', n: 1 }]],
+    })
     mockL2Book.mockResolvedValue({
       coin: '@230',
-      levels: [[{ px: '0.9999', sz: '10', n: 1 }], [{ px: '1.0001', sz: '10', n: 1 }]],
+      levels: [[{ px: '0.9999', sz: '20', n: 1 }], [{ px: '1.0001', sz: '20', n: 1 }]],
     })
     mockListUsdhSpotPairs.mockReturnValue([usdhUsdcPair])
     mockUseReadContract.mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn() })
@@ -282,7 +290,24 @@ describe('USDHMigration', () => {
     })
   })
 
-  it('auto-fetches a quote (debounced) and renders the rounded USDC receive estimate', async () => {
+  it('shows quote unavailable when visible bid depth is below the amount before connect', async () => {
+    mockUseAccount.mockReturnValue({ isConnected: false })
+    mockUseWalletClient.mockReturnValue({ data: undefined })
+    mockUseChainId.mockReturnValue(0)
+    mockL2Book.mockResolvedValue({
+      coin: '@230',
+      levels: [[{ px: '0.9999', sz: '5', n: 1 }], [{ px: '1.0001', sz: '20', n: 1 }]],
+    })
+
+    render(<USDHMigration network="mainnet" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Quote unavailable')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/Visible bid depth covers 5 of 11 USDH/)).toBeInTheDocument()
+  })
+
+  it('auto-fetches a quote and renders the depth-aware USDC receive estimate', async () => {
     setConnected()
     mockPreflightSwap.mockResolvedValue(makeRoute({ estimatedReceived: 10_999_800n }))
 
@@ -302,8 +327,56 @@ describe('USDHMigration', () => {
       { timeout: 2_000 },
     )
     await waitFor(() => {
-      expect(screen.getByText('10.9998')).toBeInTheDocument()
+      expect(mockKitGetBook).toHaveBeenCalledWith('USDH/USDC')
+      expect(screen.getByText('10.9989')).toBeInTheDocument()
     })
+  })
+
+  it('renders the connected HyperCore USDH balance', async () => {
+    setConnected()
+    mockPreflightSwap.mockImplementation(() => new Promise(() => {}))
+
+    render(<USDHMigration network="mainnet" />)
+
+    expect(screen.getByText('HyperCore USDH balance')).toBeInTheDocument()
+    expect(screen.getByText('20')).toBeInTheDocument()
+  })
+
+  it('disables migration when connected visible bid depth is below the amount', async () => {
+    setConnected()
+    mockKitGetBook.mockResolvedValue({
+      coin: '@230',
+      levels: [[{ px: '0.9999', sz: '5', n: 1 }], [{ px: '1.0001', sz: '20', n: 1 }]],
+    })
+
+    render(<USDHMigration network="mainnet" />)
+
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Visible bid depth covers 5 of 11 USDH/)).toBeInTheDocument()
+      },
+      { timeout: 2_000 },
+    )
+    expect(screen.getByRole('button', { name: 'Migrate' })).toBeDisabled()
+  })
+
+  it('disables migration when connected bid depth cannot be verified', async () => {
+    setConnected()
+    mockKitGetBook.mockRejectedValue(new Error('book unavailable'))
+
+    render(<USDHMigration network="mainnet" />)
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(
+            'Unable to verify visible USDH/USDC bid depth. Refresh before migrating.',
+          ),
+        ).toBeInTheDocument()
+      },
+      { timeout: 2_000 },
+    )
+    expect(screen.getByRole('button', { name: 'Migrate' })).toBeDisabled()
   })
 
   it('surfaces a friendly error when the auto-quote rejects', async () => {
@@ -400,6 +473,28 @@ describe('USDHMigration', () => {
       price: 1_000_000_000_000_000_000n,
       slippageBps: 0,
     })
+  })
+
+  it('shows a partial-fill receipt when IOC liquidity only fills part of the amount', async () => {
+    setConnected()
+    mockSwap.mockResolvedValue(
+      makeSwapResult({ orderId: 'order-partial', spent: 6_000_000n, received: 5_998_000n }),
+    )
+
+    render(<USDHMigration network="mainnet" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Migrate' })).not.toBeDisabled()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Migrate' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Partially filled')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/5\.998 USDC/)).toBeInTheDocument()
+    expect(screen.getByText(/Migrated/)).toHaveTextContent(
+      'Migrated 6 of 11 USDH. The unfilled balance remains on HyperCore.',
+    )
   })
 
   it('renders the watermark by default and hides it when hideAttribution is true', () => {

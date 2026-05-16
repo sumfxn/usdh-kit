@@ -13,7 +13,7 @@ import { PayCard } from './components/pay-card.js'
 import { ReceiveCard } from './components/receive-card.js'
 import { ResultPanel } from './components/result-panel.js'
 import { SlippageRow } from './components/slippage-row.js'
-import { formatUsd, scaleAmount, trimReceive } from './format-display.js'
+import { formatBalance, formatUsd, scaleAmount, trimReceive } from './format-display.js'
 import { formatUnits, parseUnits } from './format.js'
 import { friendlyError } from './friendly-error.js'
 import type { HyperNetwork, USDHMigrationResultPayload, WidgetTheme } from './types.js'
@@ -29,6 +29,13 @@ const MIN_SWAP_DISPLAY = '11'
 const QUOTE_DEBOUNCE_MS = 400
 const READ_ONLY_QUOTE_TIMEOUT_MS = 1_500
 const PRICE_DECIMALS = 18
+const TEN_18 = 10n ** BigInt(PRICE_DECIMALS)
+
+type BidDepthEstimate = {
+  receivedUsdc: bigint
+  spentUsdh: bigint
+  fullyCovered: boolean
+}
 
 // USDH -> USDC is HyperCore-only and never bridges, so the migration widget
 // has a strictly simpler lifecycle than USDHSwap (no `bridging` phase).
@@ -89,6 +96,8 @@ export function USDHMigration(props: USDHMigrationProps) {
   const [readOnlyEstimate, setReadOnlyEstimate] = useState<bigint | null>(null)
   const [readOnlyQuoteUnavailable, setReadOnlyQuoteUnavailable] = useState(false)
   const [isReadOnlyQuoting, setIsReadOnlyQuoting] = useState(false)
+  const [depthWarning, setDepthWarning] = useState<string | null>(null)
+  const [knownDepthLimited, setKnownDepthLimited] = useState(false)
   const [result, setResult] = useState<USDHMigrationResultPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -124,6 +133,8 @@ export function USDHMigration(props: USDHMigrationProps) {
     const requestId = ++quoteRequestId.current
     setQuote(null)
     setRoute(null)
+    setDepthWarning(null)
+    setKnownDepthLimited(false)
     if (!kit) {
       setIsQuoting(false)
       return
@@ -146,8 +157,30 @@ export function USDHMigration(props: USDHMigrationProps) {
           sourceChain: 'hypercore',
         })
         if (requestId !== quoteRequestId.current) return
-        setRoute(nextRoute)
-        setQuote(nextRoute.quote)
+        let nextQuote = nextRoute.quote
+        try {
+          const book = await kit.getBook(nextRoute.quote.pair)
+          if (requestId !== quoteRequestId.current) return
+          const depth = estimateUsdcFromBidDepth(book.levels[0], parsedAmount)
+          if (depth === null || depth.spentUsdh === 0n) {
+            setKnownDepthLimited(true)
+            setDepthWarning('No visible USDH/USDC bid depth for this amount.')
+          } else if (!depth.fullyCovered) {
+            setKnownDepthLimited(true)
+            setDepthWarning(
+              `Visible bid depth covers ${trimReceive(depth.spentUsdh, USDH_DECIMALS)} of ${trimReceive(parsedAmount, USDH_DECIMALS)} USDH. Reduce the amount or refresh before migrating.`,
+            )
+          } else {
+            setKnownDepthLimited(false)
+            setDepthWarning(null)
+            nextQuote = { ...nextRoute.quote, estimatedReceived: depth.receivedUsdc }
+          }
+        } catch {
+          setKnownDepthLimited(true)
+          setDepthWarning('Unable to verify visible USDH/USDC bid depth. Refresh before migrating.')
+        }
+        setRoute({ ...nextRoute, quote: nextQuote })
+        setQuote(nextQuote)
       } catch (err) {
         if (requestId !== quoteRequestId.current) return
         setError(friendlyError(err))
@@ -161,6 +194,8 @@ export function USDHMigration(props: USDHMigrationProps) {
   useEffect(() => {
     setReadOnlyEstimate(null)
     setReadOnlyQuoteUnavailable(false)
+    setDepthWarning(null)
+    setKnownDepthLimited(false)
     if (isConnected || parsedAmount === null || parsedAmount <= 0n) {
       setIsReadOnlyQuoting(false)
       return
@@ -180,21 +215,24 @@ export function USDHMigration(props: USDHMigrationProps) {
           return
         }
         const book = await info.l2Book(pair.name)
-        // Selling USDH lifts the best bid: multiply size by the bid price.
-        const bid = book.levels[0]?.[0]?.px
-        if (!bid) {
+        const depth = estimateUsdcFromBidDepth(book.levels[0], parsedAmount)
+        if (depth === null || depth.spentUsdh === 0n) {
           if (!cancelled) setReadOnlyQuoteUnavailable(true)
           return
         }
-        const bidPrice18 = parseUnits(bid, PRICE_DECIMALS)
-        if (bidPrice18 <= 0n) {
-          if (!cancelled) setReadOnlyQuoteUnavailable(true)
+        if (!depth.fullyCovered) {
+          if (!cancelled) {
+            setReadOnlyQuoteUnavailable(true)
+            setDepthWarning(
+              `Visible bid depth covers ${trimReceive(depth.spentUsdh, USDH_DECIMALS)} of ${trimReceive(parsedAmount, USDH_DECIMALS)} USDH.`,
+            )
+          }
           return
         }
-        const nextEstimate = (parsedAmount * bidPrice18) / 10n ** BigInt(PRICE_DECIMALS)
         if (!cancelled) {
-          setReadOnlyEstimate(nextEstimate)
+          setReadOnlyEstimate(depth.receivedUsdc)
           setReadOnlyQuoteUnavailable(false)
+          setDepthWarning(null)
         }
       } catch {
         if (!cancelled) {
@@ -300,7 +338,8 @@ export function USDHMigration(props: USDHMigrationProps) {
     parsedAmount > 0n &&
     !belowMinOrderValue &&
     routeLoaded &&
-    hcCovers
+    hcCovers &&
+    !knownDepthLimited
 
   const receiveDisplay = quote
     ? trimReceive(quote.estimatedReceived, USDH_DECIMALS)
@@ -344,6 +383,17 @@ export function USDHMigration(props: USDHMigrationProps) {
       <p className="mt-2 rounded-lg border border-usdh-border bg-usdh-surface/60 px-3 py-2 text-[11px] leading-snug text-usdh-text-soft">
         USDH is being sunset on Hyperliquid. This converts your HyperCore USDH balance back to USDC.
       </p>
+      {isConnected && (
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-usdh-border/70 bg-usdh-surface/40 px-3 py-2 text-[11px] text-usdh-text-soft">
+          <span>HyperCore USDH balance</span>
+          <span>
+            <span className="font-mono tabular-nums text-usdh-text">
+              {formatBalance(balances.hcUsdh, balances.hcUsdhDecimals)}
+            </span>{' '}
+            USDH
+          </span>
+        </div>
+      )}
 
       <div className="mt-3">
         <PayCard
@@ -367,6 +417,9 @@ export function USDHMigration(props: USDHMigrationProps) {
 
       {!showingResult && (
         <>
+          {depthWarning && (
+            <p className="mt-2 text-[11px] leading-snug text-usdh-text-soft">{depthWarning}</p>
+          )}
           {insufficientForRoute && (
             <p className="mt-2 text-[11px] text-usdh-text-soft">
               Exceeds your HyperCore USDH balance.
@@ -408,9 +461,15 @@ export function USDHMigration(props: USDHMigrationProps) {
       {error && <ErrorAlert message={error} />}
       {result && (
         <ResultPanel
-          result={{ orderId: result.orderId, receivedAmount: result.receivedUsdc }}
+          result={{
+            orderId: result.orderId,
+            receivedAmount: result.receivedUsdc,
+            spentAmount: result.spentUsdh,
+            ...(parsedAmount !== null && { requestedAmount: parsedAmount }),
+          }}
           onReset={reset}
           receiveTicker="USDC"
+          spentTicker="USDH"
           resetLabel="Migrate again"
         />
       )}
@@ -422,4 +481,35 @@ export function USDHMigration(props: USDHMigrationProps) {
       )}
     </div>
   )
+}
+
+function estimateUsdcFromBidDepth(
+  bids: Array<{ px: string; sz: string }>,
+  desiredUsdh: bigint,
+): BidDepthEstimate | null {
+  if (desiredUsdh <= 0n) return null
+  let remainingUsdh = desiredUsdh
+  let spentUsdh = 0n
+  let receivedUsdc = 0n
+
+  try {
+    for (const level of bids) {
+      if (remainingUsdh <= 0n) break
+      const levelSizeUsdh = parseUnits(level.sz, USDH_DECIMALS)
+      const bidPrice18 = parseUnits(level.px, PRICE_DECIMALS)
+      if (levelSizeUsdh <= 0n || bidPrice18 <= 0n) continue
+      const fillUsdh = levelSizeUsdh < remainingUsdh ? levelSizeUsdh : remainingUsdh
+      spentUsdh += fillUsdh
+      receivedUsdc += (fillUsdh * bidPrice18) / TEN_18
+      remainingUsdh -= fillUsdh
+    }
+  } catch {
+    return null
+  }
+
+  return {
+    receivedUsdc,
+    spentUsdh,
+    fullyCovered: remainingUsdh === 0n,
+  }
 }

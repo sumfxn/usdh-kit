@@ -9,6 +9,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const demoDir = join(repoRoot, 'apps', 'demo')
 const routes = [
   '/components',
+  '/components/usdh-migration',
   '/components/usdh-widget',
   '/components/market-board',
   '/components/outcome-reads',
