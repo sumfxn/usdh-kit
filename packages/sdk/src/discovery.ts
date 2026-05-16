@@ -1,8 +1,9 @@
 import { NetworkError } from './errors.js'
 import type { InfoClient, NSigFigs } from './transport/info.js'
-import type { L2Book, SpotMeta, SpotToken } from './transport/types.js'
+import type { L2Book, SpotMeta, SpotPair, SpotToken } from './transport/types.js'
 
 const USDH_TOKEN_NAME = 'USDH'
+const USDC_TOKEN_NAME = 'USDC'
 
 export interface UsdhPair {
   kind: 'spot'
@@ -12,8 +13,11 @@ export interface UsdhPair {
   base: string
   /** Quote token name. */
   quote: string
-  /** Whether USDH is the base or quote of the pair. */
-  usdhRole: 'base' | 'quote'
+  /**
+   * Whether USDH is the base or quote of the pair. `undefined` for pairs that
+   * do not involve USDH (e.g. HYPE/USDC).
+   */
+  usdhRole?: 'base' | 'quote'
   /** Index into `spotMeta.universe`. */
   index: number
   /** Token indices [base, quote]. */
@@ -21,7 +25,11 @@ export interface UsdhPair {
 }
 
 export interface ListUsdhPairsOpts {
-  quote?: 'USDH'
+  /**
+   * Filter by quote token. Defaults to `'USDC'` (USDC-quoted pairs).
+   * Pass `'USDH'` to opt into the legacy USDH-quoted pair list.
+   */
+  quote?: 'USDH' | 'USDC'
   kind?: 'spot'
 }
 
@@ -32,7 +40,11 @@ export interface GetUsdhPairInput {
 }
 
 export interface GetMidsOpts {
-  quote?: 'USDH'
+  /**
+   * Filter mid prices by quote token. Defaults to `'USDC'` (USDC-quoted pairs
+   * only). Pass `'USDH'` to get USDH-quoted pair mids instead.
+   */
+  quote?: 'USDH' | 'USDC'
 }
 
 /**
@@ -67,6 +79,48 @@ export function listUsdhSpotPairs(meta: SpotMeta): UsdhPair[] {
 }
 
 /**
+ * Build a `UsdhPair` record for every spot pair in `spotMeta`, regardless of
+ * whether USDH is involved. `usdhRole` is set only when USDH appears as base
+ * or quote; it is `undefined` for pairs such as HYPE/USDC.
+ */
+function listAllSpotPairs(meta: SpotMeta): UsdhPair[] {
+  const tokens = tokenIndexMap(meta.tokens)
+  const usdhIndex = meta.tokens.find((t) => t.name === USDH_TOKEN_NAME)?.index
+  const out: UsdhPair[] = []
+  for (const pair of meta.universe) {
+    const [baseIdx, quoteIdx] = pair.tokens
+    const baseToken = tokens.get(baseIdx)
+    const quoteToken = tokens.get(quoteIdx)
+    if (baseToken === undefined || quoteToken === undefined) continue
+    out.push(spotPairToUsdhPair(pair, baseToken, quoteToken, usdhIndex))
+  }
+  return out
+}
+
+function spotPairToUsdhPair(
+  pair: SpotPair,
+  baseToken: SpotToken,
+  quoteToken: SpotToken,
+  usdhIndex: number | undefined,
+): UsdhPair {
+  const base: UsdhPair = {
+    kind: 'spot',
+    name: pair.name,
+    base: baseToken.name,
+    quote: quoteToken.name,
+    index: pair.index,
+    tokens: pair.tokens,
+  }
+  if (usdhIndex !== undefined && pair.tokens[0] === usdhIndex) {
+    return { ...base, usdhRole: 'base' }
+  }
+  if (usdhIndex !== undefined && pair.tokens[1] === usdhIndex) {
+    return { ...base, usdhRole: 'quote' }
+  }
+  return base
+}
+
+/**
  * Find a single USDH-bearing spot pair by base/quote token names. Orientation
  * is strict: `{ base: 'HYPE', quote: 'USDH' }` will not match `USDH/HYPE`.
  */
@@ -84,8 +138,10 @@ export function findUsdhSpotPair(meta: SpotMeta, input: GetUsdhPairInput): UsdhP
 }
 
 /**
- * Cache-aware listing of USDH spot pairs. Caches `spotMeta` once and indexes
- * pairs by name so repeated `getPair` lookups do not refetch.
+ * Cache-aware listing of spot pairs. Defaults to USDC-quoted pairs; pass
+ * `{ quote: 'USDH' }` to opt into the legacy USDH-quoted pair list.
+ * Caches `spotMeta` once and indexes all pairs by name so repeated `getPair`
+ * lookups do not refetch.
  */
 export function createDiscovery(info: InfoClient): {
   listPairs(opts?: ListUsdhPairsOpts): Promise<UsdhPair[]>
@@ -93,32 +149,33 @@ export function createDiscovery(info: InfoClient): {
   getBook(pair: string, opts?: { nSigFigs?: NSigFigs }): Promise<L2Book>
   getMids(opts?: GetMidsOpts): Promise<Record<string, string>>
 } {
-  let pairsCache: Promise<UsdhPair[]> | null = null
+  let allPairsCache: Promise<UsdhPair[]> | null = null
+  /** Index by `@<index>` name for O(1) lookups. */
   let byName: Map<string, UsdhPair> | null = null
 
-  async function loadPairs(): Promise<UsdhPair[]> {
-    if (pairsCache === null) {
-      pairsCache = info.spotMeta().then((meta) => {
-        const pairs = listUsdhSpotPairs(meta)
+  async function loadAllPairs(): Promise<UsdhPair[]> {
+    if (allPairsCache === null) {
+      allPairsCache = info.spotMeta().then((meta) => {
+        const pairs = listAllSpotPairs(meta)
         byName = new Map(pairs.map((p) => [p.name, p]))
         return pairs
       })
     }
-    return pairsCache
+    return allPairsCache
   }
 
   return {
     async listPairs(opts) {
       assertSpotKind(opts?.kind)
-      const pairs = await loadPairs()
-      if (opts?.quote === USDH_TOKEN_NAME) {
-        return pairs.filter((p) => p.quote === USDH_TOKEN_NAME)
-      }
-      return pairs
+      const pairs = await loadAllPairs()
+      // Default to USDC-quoted pairs; pass `quote: 'USDH'` for the legacy path.
+      const quoteFilter = opts?.quote ?? USDC_TOKEN_NAME
+      return pairs.filter((p) => p.quote === quoteFilter)
     },
     async getPair(input) {
       assertSpotKind(input.kind)
-      const pairs = await loadPairs()
+      const pairs = await loadAllPairs()
+      // Fast path: try the canonical `@<index>` name form if stored by name.
       const cached = byName?.get(`${input.base}/${input.quote}`)
       if (cached !== undefined) return cached
       const match = pairs.find((p) => p.base === input.base && p.quote === input.quote)
@@ -132,11 +189,12 @@ export function createDiscovery(info: InfoClient): {
     },
     async getMids(opts) {
       const all = await info.allMids()
-      if (opts?.quote !== USDH_TOKEN_NAME) return all
-      const pairs = await loadPairs()
+      // Default to USDC-quoted pairs; pass `quote: 'USDH'` for the legacy path.
+      const quoteFilter = opts?.quote ?? USDC_TOKEN_NAME
+      const pairs = await loadAllPairs()
       const out: Record<string, string> = {}
       for (const p of pairs) {
-        if (p.quote !== USDH_TOKEN_NAME) continue
+        if (p.quote !== quoteFilter) continue
         const mid = all[p.name] ?? all[`@${p.index}`]
         if (mid !== undefined) out[p.name] = mid
       }
