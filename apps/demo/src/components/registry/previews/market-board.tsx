@@ -108,7 +108,7 @@ function QuoteSummary({
             <div>
               <div className="text-sm font-semibold">Quote summary</div>
               <p className="mt-1 text-sm text-neutral-500">
-                Read-only context for a USDC to USDH quote.
+                Read-only context for a USDH to USDC migration quote.
               </p>
             </div>
             <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs font-medium text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-300">

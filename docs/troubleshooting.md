@@ -153,9 +153,9 @@ Without this, every `var(--usdh-*)` falls back to `currentColor`. See [theming](
 Default `theme="auto"` follows `prefers-color-scheme`. If your app's page background is hardcoded dark while your OS is in light mode, you'll see a light widget on a dark page. Either:
 
 - Make your page background follow `prefers-color-scheme` too (recommended), or
-- Force the widget with `<USDHSwap network="mainnet" theme="dark" />`
+- Force the widget with `<USDHMigration network="mainnet" theme="dark" />`
 
-### SSR flash light → dark on first paint
+### SSR flash light -> dark on first paint
 
 Standard `prefers-color-scheme` tradeoff. See the cookie-based fix in [theming](./theming.md#avoiding-the-ssr-flash).
 
@@ -163,7 +163,7 @@ Standard `prefers-color-scheme` tradeoff. See the cookie-based fix in [theming](
 
 ### Quote refreshes feel slow
 
-`getQuote` debounces by 400ms in the widget. If you're calling the SDK directly, you control the cadence — `getQuote` is a single `/info` round-trip with no signing.
+`getQuote` debounces by 400ms in the widget. If you're calling the SDK directly, you control the cadence - `getQuote` is a single `/info` round-trip with no signing.
 
 ### Bundle size is too large
 

@@ -71,6 +71,17 @@ vi.mock('@tanstack/react-query', () => ({
 const mockPreflightSwap = vi.fn()
 const mockSwap = vi.fn()
 const mockApproveAgent = vi.fn()
+const mockL2Book = vi.fn()
+const mockListUsdhSpotPairs = vi.fn()
+
+const usdhUsdcPair = {
+  name: '@230',
+  label: 'USDH/USDC',
+  index: 230,
+  base: 'USDH',
+  quote: 'USDC',
+  usdhRole: 'base',
+}
 
 function makeQuote(estimatedReceived = 11_000_000n) {
   return {
@@ -127,22 +138,10 @@ vi.mock('@usdh-kit/sdk', () => ({
   }),
   createInfoClient: () => ({
     spotMeta: vi.fn(async () => ({})),
-    l2Book: vi.fn(async () => ({
-      coin: '@230',
-      levels: [[{ px: '0.9999', sz: '10', n: 1 }], [{ px: '1.0001', sz: '10', n: 1 }]],
-    })),
+    l2Book: (...args: unknown[]) => mockL2Book(...args),
     spotClearinghouseState: vi.fn(),
   }),
-  listUsdhSpotPairs: () => [
-    {
-      name: '@230',
-      label: 'USDH/USDC',
-      index: 230,
-      base: 'USDH',
-      quote: 'USDC',
-      usdhRole: 'base',
-    },
-  ],
+  listUsdhSpotPairs: (...args: unknown[]) => mockListUsdhSpotPairs(...args),
   getHyperEvmNativeUsdcAddress: () => '0xb88339cb7199b77e23db6e890353e22632ba630f',
   BridgeAndSwapError: class extends Error {},
   isBridgeAndSwapError: () => false,
@@ -220,6 +219,11 @@ describe('USDHMigration', () => {
     mockHcQueryData.mockReturnValue(undefined)
     mockPreflightSwap.mockResolvedValue(makeRoute())
     mockSwap.mockResolvedValue(makeSwapResult())
+    mockL2Book.mockResolvedValue({
+      coin: '@230',
+      levels: [[{ px: '0.9999', sz: '10', n: 1 }], [{ px: '1.0001', sz: '10', n: 1 }]],
+    })
+    mockListUsdhSpotPairs.mockReturnValue([usdhUsdcPair])
     mockUseReadContract.mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn() })
   })
 
@@ -235,7 +239,47 @@ describe('USDHMigration', () => {
     expect(screen.getByText('You pay')).toBeInTheDocument()
     expect(screen.getByText('You receive')).toBeInTheDocument()
     expect(screen.getByLabelText('Amount in USDH')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Connect wallet to swap' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Connect wallet to migrate' })).toBeDisabled()
+  })
+
+  it('shows a strict read-only USDH/USDC quote before wallet connect', async () => {
+    mockUseAccount.mockReturnValue({ isConnected: false })
+    mockUseWalletClient.mockReturnValue({ data: undefined })
+    mockUseChainId.mockReturnValue(0)
+
+    render(<USDHMigration network="mainnet" />)
+
+    await waitFor(() => {
+      expect(mockL2Book).toHaveBeenCalledWith('@230')
+    })
+    expect(screen.getByText('10.9989')).toBeInTheDocument()
+  })
+
+  it('shows quote unavailable when the USDH/USDC pair is missing before connect', async () => {
+    mockUseAccount.mockReturnValue({ isConnected: false })
+    mockUseWalletClient.mockReturnValue({ data: undefined })
+    mockUseChainId.mockReturnValue(0)
+    mockListUsdhSpotPairs.mockReturnValue([{ ...usdhUsdcPair, base: 'HYPE', quote: 'USDH' }])
+
+    render(<USDHMigration network="mainnet" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Quote unavailable')).toBeInTheDocument()
+    })
+    expect(mockL2Book).not.toHaveBeenCalled()
+  })
+
+  it('shows quote unavailable when the USDH/USDC book has no bid before connect', async () => {
+    mockUseAccount.mockReturnValue({ isConnected: false })
+    mockUseWalletClient.mockReturnValue({ data: undefined })
+    mockUseChainId.mockReturnValue(0)
+    mockL2Book.mockResolvedValue({ coin: '@230', levels: [[], []] })
+
+    render(<USDHMigration network="mainnet" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Quote unavailable')).toBeInTheDocument()
+    })
   })
 
   it('auto-fetches a quote (debounced) and renders the rounded USDC receive estimate', async () => {
@@ -333,9 +377,9 @@ describe('USDHMigration', () => {
     render(<USDHMigration network="mainnet" onMigrationComplete={onMigrationComplete} />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Swap' })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Migrate' })).not.toBeDisabled()
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Swap' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Migrate' }))
 
     await waitFor(() => {
       expect(screen.getByText('Filled')).toBeInTheDocument()
@@ -351,7 +395,10 @@ describe('USDHMigration', () => {
     )
     expect(onMigrationComplete).toHaveBeenCalledWith({
       orderId: 'order-7',
-      receivedUsdh: 10_998_000n,
+      spentUsdh: 11_000_000n,
+      receivedUsdc: 10_998_000n,
+      price: 1_000_000_000_000_000_000n,
+      slippageBps: 0,
     })
   })
 

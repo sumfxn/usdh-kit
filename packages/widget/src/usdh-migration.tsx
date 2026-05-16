@@ -16,7 +16,7 @@ import { SlippageRow } from './components/slippage-row.js'
 import { formatUsd, scaleAmount, trimReceive } from './format-display.js'
 import { formatUnits, parseUnits } from './format.js'
 import { friendlyError } from './friendly-error.js'
-import type { HyperNetwork, SwapResultPayload, WidgetTheme } from './types.js'
+import type { HyperNetwork, USDHMigrationResultPayload, WidgetTheme } from './types.js'
 import { useAgentWalletKit } from './use-agent-wallet-kit.js'
 import { useUsdcBalances } from './use-balances.js'
 import { useCountdown } from './use-countdown.js'
@@ -52,12 +52,12 @@ export type USDHMigrationProps = {
   /** Pre-fill the pay amount as a decimal string. */
   defaultAmount?: string
   /** Called when a migration fills successfully. */
-  onMigrationComplete?: (result: SwapResultPayload) => void
+  onMigrationComplete?: (result: USDHMigrationResultPayload) => void
 }
 
 /**
  * Exit widget: convert a USDH HyperCore balance back to USDC. This is the
- * reverse of `USDHSwap` — USDH is being sunset on Hyperliquid in favour of
+ * reverse of `USDHSwap`: USDH is being sunset on Hyperliquid in favour of
  * USDC, and this tool helps users migrate out. HyperCore sell side only:
  * no bridging, no HyperEVM source, no source-chain toggle.
  */
@@ -87,8 +87,9 @@ export function USDHMigration(props: USDHMigrationProps) {
   const [route, setRoute] = useState<SwapRoute | null>(null)
   const [isQuoting, setIsQuoting] = useState(false)
   const [readOnlyEstimate, setReadOnlyEstimate] = useState<bigint | null>(null)
+  const [readOnlyQuoteUnavailable, setReadOnlyQuoteUnavailable] = useState(false)
   const [isReadOnlyQuoting, setIsReadOnlyQuoting] = useState(false)
-  const [result, setResult] = useState<SwapResultPayload | null>(null)
+  const [result, setResult] = useState<USDHMigrationResultPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const quoteExpirySeconds = useCountdown(quote?.validUntil ?? null)
@@ -159,6 +160,7 @@ export function USDHMigration(props: USDHMigrationProps) {
 
   useEffect(() => {
     setReadOnlyEstimate(null)
+    setReadOnlyQuoteUnavailable(false)
     if (isConnected || parsedAmount === null || parsedAmount <= 0n) {
       setIsReadOnlyQuoting(false)
       return
@@ -170,20 +172,35 @@ export function USDHMigration(props: USDHMigrationProps) {
       try {
         const info = createInfoClient({ network, timeoutMs: READ_ONLY_QUOTE_TIMEOUT_MS })
         const pairs = listUsdhSpotPairs(await info.spotMeta())
-        const pair =
-          pairs.find((candidate) => candidate.base === 'USDH' && candidate.quote === 'USDC') ??
-          pairs[0]
-        if (!pair) return
+        const pair = pairs.find(
+          (candidate) => candidate.base === 'USDH' && candidate.quote === 'USDC',
+        )
+        if (!pair) {
+          if (!cancelled) setReadOnlyQuoteUnavailable(true)
+          return
+        }
         const book = await info.l2Book(pair.name)
-        // Selling USDH lifts the best bid — multiply size by the bid price.
+        // Selling USDH lifts the best bid: multiply size by the bid price.
         const bid = book.levels[0]?.[0]?.px
-        if (!bid) return
+        if (!bid) {
+          if (!cancelled) setReadOnlyQuoteUnavailable(true)
+          return
+        }
         const bidPrice18 = parseUnits(bid, PRICE_DECIMALS)
-        if (bidPrice18 <= 0n) return
+        if (bidPrice18 <= 0n) {
+          if (!cancelled) setReadOnlyQuoteUnavailable(true)
+          return
+        }
         const nextEstimate = (parsedAmount * bidPrice18) / 10n ** BigInt(PRICE_DECIMALS)
-        if (!cancelled) setReadOnlyEstimate(nextEstimate)
+        if (!cancelled) {
+          setReadOnlyEstimate(nextEstimate)
+          setReadOnlyQuoteUnavailable(false)
+        }
       } catch {
-        if (!cancelled) setReadOnlyEstimate(null)
+        if (!cancelled) {
+          setReadOnlyEstimate(null)
+          setReadOnlyQuoteUnavailable(true)
+        }
       } finally {
         if (!cancelled) setIsReadOnlyQuoting(false)
       }
@@ -252,9 +269,12 @@ export function USDHMigration(props: USDHMigrationProps) {
         amount: parsedAmount,
         slippageBps,
       })
-      const payload: SwapResultPayload = {
+      const payload: USDHMigrationResultPayload = {
         orderId: next.orderId,
-        receivedUsdh: next.received,
+        spentUsdh: next.spent,
+        receivedUsdc: next.received,
+        price: next.price,
+        slippageBps: next.slippageBps,
       }
       setResult(payload)
       setPhase('done')
@@ -282,15 +302,12 @@ export function USDHMigration(props: USDHMigrationProps) {
     routeLoaded &&
     hcCovers
 
-  // Display the receive amount: while no quote is in, mirror the input
-  // (USDH and USDC are USD-pegged stables so 1:1 is the honest user-facing
-  // default). When a quote arrives, show the rounded estimate.
   const receiveDisplay = quote
     ? trimReceive(quote.estimatedReceived, USDH_DECIMALS)
     : readOnlyEstimate !== null
       ? trimReceive(readOnlyEstimate, USDH_DECIMALS)
-      : parsedAmount && parsedAmount > 0n
-        ? trimReceive(parsedAmount, USDH_DECIMALS)
+      : readOnlyQuoteUnavailable
+        ? 'Quote unavailable'
         : '0'
 
   const payUsdValue = parsedAmount ? formatUsd(parsedAmount, USDH_DECIMALS) : null
@@ -298,9 +315,7 @@ export function USDHMigration(props: USDHMigrationProps) {
     ? quote.estimatedReceived
     : readOnlyEstimate !== null
       ? readOnlyEstimate
-      : parsedAmount && parsedAmount > 0n
-        ? parsedAmount
-        : null
+      : null
   const receiveUsdValue = receiveBigint ? formatUsd(receiveBigint, USDH_DECIMALS) : null
 
   function setMaxAmount() {
@@ -384,11 +399,21 @@ export function USDHMigration(props: USDHMigrationProps) {
             disabled={!canSwap}
             onClick={executeMigration}
             payTicker="USDH"
+            actionLabel="Migrate"
+            connectLabel="Connect wallet to migrate"
+            workingLabel="Migrating"
           />
         </>
       )}
       {error && <ErrorAlert message={error} />}
-      {result && <ResultPanel result={result} onReset={reset} receiveTicker="USDC" />}
+      {result && (
+        <ResultPanel
+          result={{ orderId: result.orderId, receivedAmount: result.receivedUsdc }}
+          onReset={reset}
+          receiveTicker="USDC"
+          resetLabel="Migrate again"
+        />
+      )}
 
       {!hideAttribution && (
         <div className="mt-3 border-t border-usdh-border pt-2.5">

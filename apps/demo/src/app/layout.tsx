@@ -9,7 +9,7 @@ import '../../../../packages/widget/src/styles.css'
 
 export const metadata: Metadata = {
   title: 'usdh-kit demo',
-  description: 'Swap stables into USDH on Hyperliquid, end-to-end demo',
+  description: 'Migrate remaining USDH back to USDC on Hyperliquid.',
 }
 
 export const viewport: Viewport = {

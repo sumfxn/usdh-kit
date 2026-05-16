@@ -48,7 +48,7 @@ export function UsdhWidgetPreview({
                   Swap module
                 </div>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Packaged USDHSwap with read-only quote before connect.
+                  Legacy USDHSwap preserved for historical integrations.
                 </p>
               </div>
               <span className="hidden rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-500 dark:border-neutral-800 sm:inline-flex">

@@ -1,8 +1,8 @@
 # Bridge and swap flow
 
-The main retail path is `USDC HyperEVM -> USDH HyperCore`.
+This is the legacy acquisition flow for historical `USDC HyperEVM -> USDH HyperCore` integrations. The current sunset path is `USDH -> USDC` migration, usually through `USDHMigration` or `kit.swap({ from: 'USDH', to: 'USDC' })`.
 
-`bridgeAndSwap()` handles the full flow:
+`bridgeAndSwap()` still handles the full legacy flow:
 
 1. quote the `USDH/USDC` spot pair
 2. inspect spendable HyperCore USDC

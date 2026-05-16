@@ -478,7 +478,16 @@ export function USDHSwap(props: USDHSwapProps) {
         </>
       )}
       {error && <ErrorAlert message={error} />}
-      {result && <ResultPanel result={result} onReset={reset} />}
+      {result && (
+        <ResultPanel
+          result={{
+            orderId: result.orderId,
+            receivedAmount: result.receivedUsdh,
+            ...(result.txHash !== undefined && { txHash: result.txHash }),
+          }}
+          onReset={reset}
+        />
+      )}
 
       {!hideAttribution && (
         <div className="mt-3 border-t border-usdh-border pt-2.5">

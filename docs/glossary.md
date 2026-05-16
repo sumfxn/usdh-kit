@@ -28,9 +28,9 @@ Hyperliquid-specific terms used across `@usdh-kit/sdk` and `@usdh-kit/widget`.
 
 ## Stablecoins
 
-**USDH** — Hyperliquid's native stablecoin, issued by Bridge and designed by Native Markets. Backed by cash + US Treasuries. 50% of reserve revenue routes to the Hyperliquid Assistance Fund.
+**USDH** — Hyperliquid stablecoin issued by Bridge and designed by Native Markets. USDH is being sunset in favour of USDC, so current `usdh-kit` work is focused on migration and historical reference.
 
-**USDC (HyperEVM)** — Circle's USDC bridged onto HyperEVM. The default source asset for `@usdh-kit/sdk`.
+**USDC (HyperEVM)** — Circle's USDC bridged onto HyperEVM. It was the default source asset for the legacy `USDC -> USDH` acquisition flow.
 
 **USDT** — Tether's USDT. Pricing and swap support are deferred (USDT/USDC/USDH double-hop).
 

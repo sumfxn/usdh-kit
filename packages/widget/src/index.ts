@@ -6,5 +6,10 @@ export { USDHSwap } from './usdh-swap.js'
 export type { USDHSwapProps } from './usdh-swap.js'
 export { USDHMigration } from './usdh-migration.js'
 export type { USDHMigrationProps } from './usdh-migration.js'
-export type { HyperNetwork, SwapResultPayload, WidgetTheme } from './types.js'
+export type {
+  HyperNetwork,
+  SwapResultPayload,
+  USDHMigrationResultPayload,
+  WidgetTheme,
+} from './types.js'
 export { useEffectiveTheme } from './use-theme.js'

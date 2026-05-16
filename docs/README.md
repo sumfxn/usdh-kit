@@ -1,22 +1,23 @@
 # usdh-kit
 
-TypeScript SDK and React widget for USDH on Hyperliquid.
+USDH sunset migration kit for Hyperliquid.
 
-`usdh-kit` helps apps work with USDH without reimplementing Hyperliquid spot discovery, EIP-712 order signing, HyperEVM bridge transactions, or bridge-credit polling.
+`usdh-kit` helps apps migrate remaining HyperCore USDH balances back to USDC.
+The original SDK, widget, and HIP-4 work stays in the repo as legacy reference
+code, not as an active product roadmap.
 
 ## Packages
 
 | Package | Purpose |
 |---|---|
-| `@usdh-kit/sdk` | Quote, route, bridge, and swap USDH-focused flows. |
-| `@usdh-kit/widget` | Embeddable React swap widget built on the SDK. |
+| `@usdh-kit/sdk` | USDH quote, route, bridge, signing, and migration helpers kept for sunset support. |
+| `@usdh-kit/widget` | Embeddable React migration widget plus the legacy swap widget. |
 
 ## What works today
 
-* Quote and swap `USDC -> USDH` and `USDH -> USDC` on the canonical Hyperliquid spot pair.
-* Route from existing HyperCore USDC when available.
-* Bridge USDC from HyperEVM to HyperCore, wait for credit, then swap.
-* Bridge linked USDC/USDH spot assets from HyperCore back to HyperEVM.
+* Migrate `USDH -> USDC` on the canonical Hyperliquid spot pair.
+* Keep legacy `USDC -> USDH` quote and swap support for existing integrations.
+* Preserve bridge, discovery, and HIP-4 read-only helpers as archive/reference surfaces.
 * Use approved Hyperliquid agent wallets so browser apps do not ask Rabby or other injected wallets to sign L1 order payloads directly.
 * Display HyperEVM and HyperCore balances for USDC and USDH in the widget.
 
@@ -38,11 +39,11 @@ only when your app imports SDK APIs directly.
 ## Minimal widget
 
 ```tsx
-import { USDHSwap } from '@usdh-kit/widget'
+import { USDHMigration } from '@usdh-kit/widget'
 import '@usdh-kit/widget/styles.css'
 
 export default function Page() {
-  return <USDHSwap network="mainnet" />
+  return <USDHMigration network="mainnet" />
 }
 ```
 
@@ -67,17 +68,17 @@ const kit = createUsdhKit({
   slippageBps: 30,
 })
 
-const result = await kit.bridgeAndSwap({
-  from: 'USDC',
+const result = await kit.swap({
+  from: 'USDH',
+  to: 'USDC',
   amount: 11_000_000n,
-  onProgress: (event) => console.log(event.phase),
 })
 
-console.log(result.swap.orderId)
+console.log(result.orderId)
 ```
 
 ## Read next
 
-* [Bridge and swap flow](bridge-and-swap.md) explains the full user journey and Rabby prompts.
+* [Bridge and swap flow](bridge-and-swap.md) explains the legacy acquisition journey and Rabby prompts.
 * [Agent wallets](agent-wallets.md) explains secure signing patterns for builders.
 * [Architecture](architecture.md) documents the SDK internals.

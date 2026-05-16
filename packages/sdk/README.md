@@ -6,29 +6,35 @@
 
 **Current SDK version:** `0.3.0`
 
-TypeScript SDK for USDH on Hyperliquid.
+TypeScript SDK for USDH sunset support on Hyperliquid.
 
-USDH is the native stablecoin on Hyperliquid, issued by Bridge and designed by Native Markets, with 50% of reserve revenue routed to the Hyperliquid Assistance Fund. `@usdh-kit/sdk` ships the retail-side plumbing (pair resolution, signing, transport) so apps and bots can convert into USDH without writing the Hyperliquid action layer themselves.
+`@usdh-kit/sdk` now serves migration and maintenance use cases: pair resolution, signing, transport, and order helpers for moving remaining USDH balances back to USDC. The original USDH and HIP-4 work remains available as legacy reference code.
 
-Contributors: [Yaugourt](https://x.com/Yaugourt) · [Sumfxn](https://x.com/sumfxn)
+Contributors: [Yaugourt](https://x.com/Yaugourt) / [Sumfxn](https://x.com/sumfxn)
 
 ## Status
 
 Pre-release. Public API is unstable until `1.0.0`.
 
+USDH sunset status: this package is in maintenance/migration mode. It keeps the
+USDH read/write primitives needed for users to migrate back to USDC and preserves
+the HIP-4 read-only work as reference code. Future HIP-4 tooling should live in a
+separate repo/package rather than turning `usdh-kit` into a generic spot SDK.
+
 What works today:
 
-* `getQuote()` and `swap()` for `USDC → USDH` and `USDH → USDC` end to end (signing + msgpack + IOC limit submission)
+* `getQuote()` and `swap()` for the sunset `USDH -> USDC` migration path
+* Legacy `USDC -> USDH` quote and swap support for historical integrations
 * `bridgeToCore()` for moving USDC from HyperEVM to HyperCore, with credit polling
 * `bridgeFromCore()` for moving linked USDC/USDH spot assets from HyperCore to HyperEVM
 * `getHypercoreBalance()` for spendable HyperCore balances (`total - hold`)
 * `getRoute()` / `preflightSwap()` for HyperCore-vs-HyperEVM source selection
-* `bridgeAndSwap()` for route → optional bridge → swap orchestration
+* Legacy `bridgeAndSwap()` for route -> optional bridge -> swap orchestration
 * USDH spot market discovery (`listPairs`, `getPair`, `getBook`, `getMids`)
 * Experimental read-only outcome market metadata, books, and mids
 * Read-only `InfoClient` (spotMeta, outcomeMeta, spotClearinghouseState, L2 book, allMids)
 
-Deferred to follow-up PRs: USDT pricing/swap and multi-chain source.
+No new USDH acquisition roadmap is planned while USDH is sunset.
 
 ## Install
 
@@ -39,28 +45,13 @@ pnpm add @usdh-kit/sdk
 ## Quickstart
 
 ```ts
-import { BridgeTimeoutError, createUsdhKit, isBridgeAndSwapError } from '@usdh-kit/sdk'
+import { createUsdhKit } from '@usdh-kit/sdk'
 
 const kit = createUsdhKit({ network: 'mainnet', signer, evmWallet, slippageBps: 30 })
-const amount = 11_000_000n // 11 USDC; Hyperliquid spot orders must be >10 USDC
+const amount = 11_000_000n // 11 USDH; Hyperliquid spot orders must be >10 USDH
 
-try {
-  const result = await kit.bridgeAndSwap({
-    from: 'USDC',
-    amount,
-    onProgress: (event) => console.log(event.phase),
-  })
-
-  console.log(`got ${result.swap.received} USDH for ${result.swap.spent} USDC`)
-} catch (err) {
-  if (isBridgeAndSwapError(err)) {
-    console.error(`${err.phase} failed`, err.cause)
-    if (err.cause instanceof BridgeTimeoutError) {
-      console.log(`bridge tx ${err.cause.txHash} is still pending HyperCore credit`)
-    }
-  }
-  throw err
-}
+const result = await kit.swap({ from: 'USDH', to: 'USDC', amount })
+console.log(`got ${result.received} USDC for ${result.spent} USDH`)
 ```
 
 `swap()` submits an IOC limit order priced from the book mid plus/minus
@@ -103,22 +94,24 @@ Backend and bot builders can provide an already-approved agent signer from a pri
 `getQuote()` returns a mid-price snapshot with a 30-second validity window.
 
 ```ts
-const quote = await kit.getQuote({ from: 'USDC', amount: 11_000_000n })
+const quote = await kit.getQuote({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
 if (Date.now() < quote.validUntil) {
   console.log(`mid-price on ${quote.pair}: ${quote.midPrice}`)
-  console.log(`would receive ~${quote.estimatedReceived} USDH`)
+  console.log(`would receive ~${quote.estimatedReceived} USDC`)
 }
 
-const reverse = await kit.getQuote({ from: 'USDH', to: 'USDC', amount: 11_000_000n })
-console.log(`would receive ~${reverse.estimatedReceived} USDC`)
+// Legacy acquisition remains supported for existing integrators.
+const legacy = await kit.getQuote({ from: 'USDC', amount: 11_000_000n })
+console.log(`would receive ~${legacy.estimatedReceived} USDH`)
 ```
 
 ## Route and preflight
 
 `getHypercoreBalance()` returns total, held, and spendable HyperCore balance for
 a source stable. `getRoute()` decides whether `USDC -> USDH` can swap directly
-from HyperCore or needs to bridge from HyperEVM first. `USDH -> USDC` is
-HyperCore-only: bridge USDH to HyperCore first, swap, then call
+from HyperCore or needs to bridge from HyperEVM first. This is legacy
+acquisition support. The sunset `USDH -> USDC` path is HyperCore-only: bridge
+USDH to HyperCore first, swap, then call
 `bridgeFromCore()` if you need the resulting USDC on HyperEVM.
 
 ```ts
@@ -201,14 +194,17 @@ const outcomeMids = await kit.getOutcomeMids()
 console.log(market.name, yesBook.coin, outcomeMids[market.sides[0].coin])
 ```
 
-## Experimental HIP-4 builder helpers
+## Archived HIP-4 builder helpers
 
-The SDK also exports public, experimental, headless helpers for app builders.
+The SDK also exports public, experimental, headless helpers that were built for
+the HIP-4 registry work.
 They do not render React components; they turn raw SDK reads into UI-ready data
 contracts for HIP-4 event cards, market rows, side selectors, order books,
 positions, plus USDH quote guards and order drafts.
 
-These helpers are additive and read-only/draft-only. Until `1.0.0`, treat the
+These helpers are additive and read-only/draft-only. They are preserved as
+reference material in `usdh-kit`, not as the future HIP-4 product surface.
+Until `1.0.0`, treat the
 exact return shapes as pre-release API, but prefer them over app-local parsing:
 they centralize side-coin encoding, quote health checks, decimal-safe position
 math, and signer-ready order draft validation.
@@ -325,14 +321,13 @@ Package boundaries:
 
 | Layer | Import today | Owns |
 | --- | --- | --- |
-| `@usdh-kit/sdk` | Read clients, USDH spot discovery, HIP-4 metadata, order methods, and builder data helpers. | Typed reads, normalization, checks, and signer-ready input shapes. |
-| `@usdh-kit/widget` | The drop-in USDH swap widget. | A packaged swap UI with wallet-gated writes. |
-| `apps/demo` registry | Copy/paste React patterns only. | Example component composition, docs, and visual states. |
+| `@usdh-kit/sdk` | Migration reads/writes, legacy USDH spot helpers, HIP-4 reference helpers. | Typed reads, normalization, checks, and signer-ready input shapes. |
+| `@usdh-kit/widget` | The drop-in USDH migration widget plus legacy swap widget. | Packaged wallet-gated migration UI. |
+| `apps/demo` registry | Migration and archived reference patterns only. | Example component composition, docs, and visual states. |
 | Your app | Your product shell. | Routing, cache policy, wallet/session state, balances, PnL, settlement, and final writes. |
 
-No React hooks or HIP-4 UI package is published in this release. A future
-`@usdh-kit/react` package, if added, should stay hooks-only with optional cache
-adapters and no bundled visual design system.
+No React hooks or HIP-4 UI package is published from this repo. Future HIP-4
+tooling should be designed in a separate repo/package with a clean name and API.
 
 ## Trade USDH spot pairs
 

@@ -15,6 +15,10 @@ export function ActionButton(props: {
   onClick: () => void
   /** Pay-side token ticker shown in balance/minimum labels. Defaults to `'USDC'`. */
   payTicker?: 'USDC' | 'USDH'
+  actionLabel?: string
+  bridgeLabel?: string
+  connectLabel?: string
+  workingLabel?: string
 }) {
   const {
     phase,
@@ -27,6 +31,10 @@ export function ActionButton(props: {
     disabled,
     onClick,
     payTicker = 'USDC',
+    actionLabel = 'Swap',
+    bridgeLabel = 'Bridge and swap',
+    connectLabel = 'Connect wallet to swap',
+    workingLabel = 'Swapping',
   } = props
   return (
     <button
@@ -45,20 +53,20 @@ export function ActionButton(props: {
         </>
       ) : phase === 'swapping' ? (
         <>
-          <Spinner /> Swapping
+          <Spinner /> {workingLabel}
         </>
       ) : insufficient ? (
         `Insufficient ${sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} ${payTicker}`
       ) : belowMinOrderValue ? (
         `Minimum 11 ${payTicker}`
       ) : !isConnected ? (
-        'Connect wallet to swap'
+        connectLabel
       ) : needsTradingSession ? (
         'Enable trading session'
       ) : requiresBridge ? (
-        'Bridge and swap'
+        bridgeLabel
       ) : (
-        'Swap'
+        actionLabel
       )}
     </button>
   )

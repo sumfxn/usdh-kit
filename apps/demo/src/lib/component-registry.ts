@@ -87,12 +87,12 @@ const sdkInstall = 'pnpm add @usdh-kit/sdk'
 export const componentEntries: ComponentEntry[] = [
   {
     slug: 'usdh-widget',
-    title: 'USDH Widget',
+    title: 'USDH Swap Widget',
     shortTitle: 'Widget',
-    eyebrow: 'Drop-in swap',
+    eyebrow: 'Legacy swap',
     category: 'Widget',
     description:
-      'The packaged swap component for USDC to USDH flows, composed with pre-wallet quote context.',
+      'The packaged legacy swap component for historical USDC to USDH flows, kept only for compatibility.',
     icon: WalletCards,
     tags: ['widget', 'swap', 'usdc', 'usdh', 'wallet'],
     liveCapable: true,
@@ -135,16 +135,17 @@ export function SwapCard({ context }) {
       },
     ],
     useCase: {
-      usedFor: 'Wallet swap entry, app dashboard modules, and onboarding flows.',
+      usedFor: 'Legacy USDH acquisition flows and historical integration reference.',
       reads: 'Pair, best ask, spread, receive estimate, and quote readiness before connect.',
-      doesNot: 'Change the widget API, submit swaps, or unlock writes before wallet/session state.',
+      doesNot:
+        'Represent the migration path, change the widget API, or unlock writes before wallet/session state.',
     },
     usage: {
       title: 'Pre-wallet swap entry',
       language: 'tsx',
       code: `export function SwapEntry({ quoteContext }) {
   return (
-    <section className="grid gap-4 lg:grid-cols-[1fr_320px]" aria-label="Swap USDC to USDH">
+    <section className="grid gap-4 lg:grid-cols-[1fr_320px]" aria-label="Legacy swap USDC to USDH">
       <USDHSwap network="mainnet" defaultAmount="250" />
       <QuoteContext {...quoteContext} />
     </section>
@@ -152,7 +153,8 @@ export function SwapCard({ context }) {
 }`,
     },
     installCommand: 'pnpm add @usdh-kit/widget wagmi viem',
-    composition: 'Use USDHSwap as the write boundary and place read-only quote context around it.',
+    composition:
+      'Keep USDHSwap as a legacy write boundary; prefer USDHMigration for the sunset path.',
   },
   {
     slug: 'usdh-migration',
@@ -161,7 +163,7 @@ export function SwapCard({ context }) {
     eyebrow: 'Drop-in exit',
     category: 'Widget',
     description:
-      'The packaged exit component for USDH to USDC: convert a HyperCore USDH balance back to USDC as USDH is sunset.',
+      'The primary sunset component: convert a HyperCore USDH balance back to USDC with wallet-gated writes.',
     icon: ArrowLeftRight,
     tags: ['widget', 'migration', 'usdh', 'usdc', 'exit'],
     liveCapable: true,
@@ -184,7 +186,7 @@ export function UsdhMigrationEntry() {
       usedFor: 'Wallet exit flows, USDH wind-down banners, and balance migration prompts.',
       reads: 'HyperCore USDH balance, USDH/USDC pair, and the sell-side receive estimate.',
       doesNot:
-        'Bridge to HyperEVM, change the widget API, or submit swaps before wallet/session state.',
+        'Bridge to HyperEVM, fake receive estimates, or submit swaps before wallet/session state.',
     },
     usage: {
       title: 'USDH exit entry',
@@ -1110,26 +1112,18 @@ if (walletConnected && writesEnabled && draft.placeOrderInput) {
   },
 ]
 
-export const visibleComponentEntries = componentEntries.filter((entry) => entry.visible)
+const visibleEntryOrder = new Map<ComponentSlug, number>(
+  ['usdh-migration', 'usdh-widget'].map((slug, index) => [slug as ComponentSlug, index]),
+)
+
+export const visibleComponentEntries = componentEntries
+  .filter((entry) => entry.visible && visibleEntryOrder.has(entry.slug))
+  .sort((a, b) => (visibleEntryOrder.get(a.slug) ?? 999) - (visibleEntryOrder.get(b.slug) ?? 999))
 
 export const componentSections: ComponentSection[] = [
   {
-    title: 'USDH',
-    items: ['usdh-widget', 'usdh-migration', 'market-board', 'quote-readiness'],
-  },
-  {
-    title: 'HIP-4',
-    items: [
-      'outcome-reads',
-      'outcome-market-row',
-      'outcome-odds-selector',
-      'outcome-order-book',
-      'outcome-position-row',
-    ],
-  },
-  {
-    title: 'Trading',
-    items: ['order-ticket-mock'],
+    title: 'Migration',
+    items: ['usdh-migration', 'usdh-widget'],
   },
 ]
 

@@ -10,7 +10,7 @@ module.exports = {
       colors: {
         // Semantic tokens — resolved from CSS variables defined in
         // src/styles.css. Light mode is the default; the `dark` class
-        // (added on the widget root by USDHSwap when the effective theme
+        // (added on the widget root when the effective theme
         // is dark) overrides each token. Using rgb(var() / <alpha-value>)
         // means consumers can still write `bg-usdh-surface/40`, etc.
         'usdh-bg': 'rgb(var(--usdh-bg) / <alpha-value>)',
