@@ -16,3 +16,11 @@ export interface SwapResultPayload {
   receivedUsdh: bigint
   txHash?: `0x${string}`
 }
+
+export interface USDHMigrationResultPayload {
+  orderId: string
+  spentUsdh: bigint
+  receivedUsdc: bigint
+  price: bigint
+  slippageBps: number
+}

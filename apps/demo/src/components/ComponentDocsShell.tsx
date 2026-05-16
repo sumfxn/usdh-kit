@@ -48,7 +48,7 @@ export function ComponentDocsShell({ activeSlug, children }: ComponentDocsShellP
               <SheetContent className="w-[calc(100vw-1rem)] max-w-80">
                 <SheetHeader>
                   <SheetTitle>Components</SheetTitle>
-                  <SheetDescription>USDH surfaces for builder apps.</SheetDescription>
+                  <SheetDescription>USDH sunset migration surfaces.</SheetDescription>
                 </SheetHeader>
                 <Separator />
                 <div className="px-3 py-4">
@@ -103,7 +103,7 @@ export function ComponentDocsShell({ activeSlug, children }: ComponentDocsShellP
                   Registry
                 </div>
                 <p className="mt-1 text-sm leading-6 text-neutral-500 dark:text-neutral-400">
-                  Copyable USDH product patterns.
+                  USDH sunset migration and legacy references.
                 </p>
               </div>
               <SidebarSearch value={navQuery} onChange={setNavQuery} />

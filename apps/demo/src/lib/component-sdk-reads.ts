@@ -13,7 +13,7 @@ export function getComponentSdkReads(slug: ComponentSlug): ComponentSdkRead[] {
       return [
         {
           rawRead:
-            'USDHSwap owns its packaged quote flow; companion context can read spotMeta + l2Book.',
+            'USDHSwap owns its legacy quote flow; companion context can read spotMeta + l2Book.',
           adapter: 'createQuoteSummaryData from @usdh-kit/sdk for companion read context.',
           produces: 'pair, best ask, spread, receive estimate',
           parentOwns: 'wallet provider, page placement, analytics, and surrounding cache',

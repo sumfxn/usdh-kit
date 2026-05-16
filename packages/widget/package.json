@@ -1,7 +1,7 @@
 {
   "name": "@usdh-kit/widget",
   "version": "0.1.1",
-  "description": "Embeddable React widget for swapping stablecoins into USDH on Hyperliquid",
+  "description": "Embeddable React widgets for USDH sunset migration on Hyperliquid",
   "license": "MIT",
   "author": "sumfxn",
   "homepage": "https://github.com/sumfxn/usdh-kit#readme",

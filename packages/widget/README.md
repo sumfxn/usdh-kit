@@ -1,6 +1,6 @@
 # @usdh-kit/widget
 
-Embeddable React widget for swapping stablecoins into USDH on Hyperliquid.
+Embeddable React widgets for USDH sunset migration on Hyperliquid.
 
 ## Install
 
@@ -18,17 +18,19 @@ The widget reads the connected wallet from wagmi. Wrap your tree in `WagmiProvid
 The root widget entry is ESM-only because the React wallet stack it composes is ESM-first. CommonJS projects can still load `@usdh-kit/widget/styles.css` and `@usdh-kit/widget/tailwind-content`, but should import the widget from an ESM module or through their app bundler.
 
 ```tsx
-import { USDHSwap } from '@usdh-kit/widget'
+import { USDHMigration } from '@usdh-kit/widget'
 import '@usdh-kit/widget/styles.css'
 
 export default function Page() {
-  return <USDHSwap network="mainnet" />
+  return <USDHMigration network="mainnet" />
 }
 ```
 
-The full widget manages a short-lived Hyperliquid agent wallet session before swapping. For custom UIs, prefer the SDK primitives (`approveAgent`, `accountAddress`, and `createUsdhKit`) so reads use the master wallet while L1 orders are signed by an approved agent.
+`USDHMigration` is the primary sunset widget. It converts HyperCore USDH back to USDC with wallet-gated writes and never displays a fake receive estimate when the live quote is unavailable. `USDHSwap` remains exported only as a legacy `USDC -> USDH` widget for historical integrations.
 
-For HyperEVM-funded swaps, users should expect:
+The migration widget manages a short-lived Hyperliquid agent wallet session before submitting an order. For custom UIs, prefer the SDK primitives (`approveAgent`, `accountAddress`, and `createUsdhKit`) so reads use the master wallet while L1 orders are signed by an approved agent.
+
+For legacy HyperEVM-funded `USDHSwap` flows, users should expect:
 
 1. one wallet signature to enable the trading session on first use
 2. one USDC approval transaction if allowance is not already sufficient
@@ -68,6 +70,26 @@ import '@usdh-kit/widget/styles.css'
 ## Props
 
 ```ts
+type USDHMigrationProps = {
+  network: 'mainnet' | 'testnet'
+  hideNetworkToggle?: boolean
+  hideAttribution?: boolean
+  theme?: 'dark' | 'light' | 'auto'
+  defaultSlippageBps?: number
+  defaultAmount?: string
+  onMigrationComplete?: (result: {
+    orderId: string
+    spentUsdh: bigint
+    receivedUsdc: bigint
+    price: bigint
+    slippageBps: number
+  }) => void
+}
+```
+
+Legacy swap widget:
+
+```ts
 type USDHSwapProps = {
   network: 'mainnet' | 'testnet'
   hideNetworkToggle?: boolean
@@ -83,7 +105,7 @@ type USDHSwapProps = {
 }
 ```
 
-`network` is required. Pass `'mainnet'` for production swaps and `'testnet'` for the Hyperliquid testnet.
+`network` is required. Pass `'mainnet'` for production migration flows and `'testnet'` for the Hyperliquid testnet.
 
 ## License
 

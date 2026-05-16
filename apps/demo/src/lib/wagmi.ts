@@ -15,7 +15,7 @@ export const wagmiConfig = createConfig(
     },
     walletConnectProjectId: WALLETCONNECT_PROJECT_ID,
     appName: 'usdh-kit demo',
-    appDescription: 'Swap stables into USDH on Hyperliquid',
+    appDescription: 'Migrate remaining USDH back to USDC on Hyperliquid',
     appUrl: 'https://github.com/sumfxn/usdh-kit',
   }),
 )

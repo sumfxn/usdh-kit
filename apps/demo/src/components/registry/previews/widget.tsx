@@ -1,8 +1,8 @@
 'use client'
 
 import { type L2Book, createQuoteSummaryData } from '@usdh-kit/sdk'
-import { USDHSwap } from '@usdh-kit/widget'
-import { CheckCircle2, LockKeyhole, WalletCards } from 'lucide-react'
+import { USDHMigration, USDHSwap } from '@usdh-kit/widget'
+import { ArrowLeftRight, CheckCircle2, LockKeyhole, WalletCards } from 'lucide-react'
 
 import { CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -48,7 +48,7 @@ export function UsdhWidgetPreview({
                   Swap module
                 </div>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Packaged USDHSwap with read-only quote before connect.
+                  Legacy USDHSwap preserved for historical integrations.
                 </p>
               </div>
               <span className="hidden rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-500 dark:border-neutral-800 sm:inline-flex">
@@ -76,6 +76,48 @@ export function UsdhWidgetPreview({
         </Panel>
         <PreWalletContext snapshot={snapshot} />
       </div>
+    </PreviewShell>
+  )
+}
+
+export function UsdhMigrationPreview({ size }: { size: PreviewSize }) {
+  return (
+    <PreviewShell>
+      <Panel className="bg-neutral-50 dark:bg-neutral-950">
+        <CardContent className="p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <ArrowLeftRight className="h-4 w-4 text-neutral-500" />
+                Migration module
+              </div>
+              <p className="mt-1 text-sm text-neutral-500">
+                Packaged USDHMigration: convert a HyperCore USDH balance back to USDC.
+              </p>
+            </div>
+            <span className="hidden rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-500 dark:border-neutral-800 sm:inline-flex">
+              exit path
+            </span>
+          </div>
+          <div className="flex min-w-0 justify-center">
+            <div
+              className="min-w-0 w-full justify-self-center"
+              style={{
+                width:
+                  size === 'compact'
+                    ? 'min(100%, 420px, calc(100vw - 6rem))'
+                    : 'min(100%, 480px, calc(100vw - 6rem))',
+                maxWidth:
+                  size === 'compact'
+                    ? 'min(420px, calc(100vw - 6rem))'
+                    : 'min(480px, calc(100vw - 6rem))',
+              }}
+            >
+              <USDHMigration network="mainnet" defaultAmount={DEMO_AMOUNT} theme="dark" />
+            </div>
+          </div>
+        </CardContent>
+      </Panel>
     </PreviewShell>
   )
 }

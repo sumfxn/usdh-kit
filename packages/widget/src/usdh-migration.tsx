@@ -1,49 +1,48 @@
 'use client'
 
-import {
-  BridgeTimeoutError,
-  createInfoClient,
-  isBridgeAndSwapError,
-  listUsdhSpotPairs,
-} from '@usdh-kit/sdk'
+import { createInfoClient, listUsdhSpotPairs } from '@usdh-kit/sdk'
 import type { Quote, SwapRoute } from '@usdh-kit/sdk'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useAccount, useChainId, useSwitchChain } from 'wagmi'
+import { useAccount } from 'wagmi'
 
-import { HYPER_EVM_CHAIN_ID } from './chains.js'
 import { ActionButton } from './components/action-button.js'
 import { ArrowDivider } from './components/arrow-divider.js'
-import { BalanceRow } from './components/balance-row.js'
 import { ErrorAlert } from './components/error-alert.js'
-import { InlineSystemAddressNote } from './components/inline-system-address-note.js'
 import { NetworkToggle } from './components/network-toggle.js'
 import { PayCard } from './components/pay-card.js'
 import { ReceiveCard } from './components/receive-card.js'
 import { ResultPanel } from './components/result-panel.js'
 import { SlippageRow } from './components/slippage-row.js'
-import type { SourceChain } from './components/source-chain-pill.js'
-import { WrongNetworkBanner } from './components/wrong-network-banner.js'
-import { formatUsd, scaleAmount, trimReceive } from './format-display.js'
+import { formatBalance, formatUsd, scaleAmount, trimReceive } from './format-display.js'
 import { formatUnits, parseUnits } from './format.js'
 import { friendlyError } from './friendly-error.js'
-import type { HyperNetwork, SwapResultPayload, WidgetTheme } from './types.js'
+import type { HyperNetwork, USDHMigrationResultPayload, WidgetTheme } from './types.js'
 import { useAgentWalletKit } from './use-agent-wallet-kit.js'
 import { useUsdcBalances } from './use-balances.js'
 import { useCountdown } from './use-countdown.js'
 import { useEffectiveTheme } from './use-theme.js'
 import { Watermark } from './watermark.js'
 
-const USDC_DECIMALS = 6
+const USDH_DECIMALS = 6
 const MIN_SWAP_AMOUNT = 10_000_001n
 const MIN_SWAP_DISPLAY = '11'
 const QUOTE_DEBOUNCE_MS = 400
 const READ_ONLY_QUOTE_TIMEOUT_MS = 1_500
 const PRICE_DECIMALS = 18
+const TEN_18 = 10n ** BigInt(PRICE_DECIMALS)
 
-type Phase = 'idle' | 'approving' | 'bridging' | 'swapping' | 'done'
+type BidDepthEstimate = {
+  receivedUsdc: bigint
+  spentUsdh: bigint
+  fullyCovered: boolean
+}
 
-export type USDHSwapProps = {
-  /** HyperEVM network the swap targets. */
+// USDH -> USDC is HyperCore-only and never bridges, so the migration widget
+// has a strictly simpler lifecycle than USDHSwap (no `bridging` phase).
+type Phase = 'idle' | 'approving' | 'swapping' | 'done'
+
+export type USDHMigrationProps = {
+  /** HyperEVM network the migration targets. */
   network: HyperNetwork
   /** Hide the in-widget testnet/mainnet toggle. Defaults to false. */
   hideNetworkToggle?: boolean
@@ -59,11 +58,17 @@ export type USDHSwapProps = {
   defaultSlippageBps?: number
   /** Pre-fill the pay amount as a decimal string. */
   defaultAmount?: string
-  /** Called when a swap fills successfully. */
-  onSwapComplete?: (result: SwapResultPayload) => void
+  /** Called when a migration fills successfully. */
+  onMigrationComplete?: (result: USDHMigrationResultPayload) => void
 }
 
-export function USDHSwap(props: USDHSwapProps) {
+/**
+ * Exit widget: convert a USDH HyperCore balance back to USDC. This is the
+ * reverse of `USDHSwap`: USDH is being sunset on Hyperliquid in favour of
+ * USDC, and this tool helps users migrate out. HyperCore sell side only:
+ * no bridging, no HyperEVM source, no source-chain toggle.
+ */
+export function USDHMigration(props: USDHMigrationProps) {
   const {
     network: initialNetwork,
     hideNetworkToggle = false,
@@ -71,14 +76,12 @@ export function USDHSwap(props: USDHSwapProps) {
     theme = 'auto',
     defaultSlippageBps = 30,
     defaultAmount = '11',
-    onSwapComplete,
+    onMigrationComplete,
   } = props
 
   const effectiveTheme = useEffectiveTheme(theme)
   const [network, setNetwork] = useState<HyperNetwork>(initialNetwork)
   const { address, isConnected } = useAccount()
-  const chainId = useChainId()
-  const { switchChain, isPending: isSwitching } = useSwitchChain()
   const { kit, sessionReady, isApprovingSession, enableTradingSession } = useAgentWalletKit(network)
   const balances = useUsdcBalances(network, address)
 
@@ -91,18 +94,16 @@ export function USDHSwap(props: USDHSwapProps) {
   const [route, setRoute] = useState<SwapRoute | null>(null)
   const [isQuoting, setIsQuoting] = useState(false)
   const [readOnlyEstimate, setReadOnlyEstimate] = useState<bigint | null>(null)
+  const [readOnlyQuoteUnavailable, setReadOnlyQuoteUnavailable] = useState(false)
   const [isReadOnlyQuoting, setIsReadOnlyQuoting] = useState(false)
-  const [result, setResult] = useState<SwapResultPayload | null>(null)
+  const [depthWarning, setDepthWarning] = useState<string | null>(null)
+  const [knownDepthLimited, setKnownDepthLimited] = useState(false)
+  const [result, setResult] = useState<USDHMigrationResultPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [bridgeStartedAt, setBridgeStartedAt] = useState<number | null>(null)
-  const [nowMs, setNowMs] = useState(() => Date.now())
-
-  const expectedChainId = HYPER_EVM_CHAIN_ID[network]
-  const onWrongChain = isConnected && chainId !== expectedChainId
 
   const quoteExpirySeconds = useCountdown(quote?.validUntil ?? null)
 
-  const busy = phase === 'approving' || phase === 'bridging' || phase === 'swapping'
+  const busy = phase === 'approving' || phase === 'swapping'
   const showingResult = phase === 'done' && result !== null
   const networkToggleLocked = busy
 
@@ -111,39 +112,30 @@ export function USDHSwap(props: USDHSwapProps) {
   }, [initialNetwork, networkToggleLocked])
 
   useEffect(() => {
-    if (phase !== 'bridging') {
-      setBridgeStartedAt(null)
-      return
-    }
-    setNowMs(Date.now())
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000)
-    return () => window.clearInterval(timer)
-  }, [phase])
-
-  useEffect(() => {
     if (quote && quoteExpirySeconds === 0) setQuote(null)
   }, [quote, quoteExpirySeconds])
 
   const parsedAmount = useMemo(() => {
     try {
-      return parseUnits(amountStr || '0', USDC_DECIMALS)
+      return parseUnits(amountStr || '0', USDH_DECIMALS)
     } catch {
       return null
     }
   }, [amountStr])
-  const balanceRefreshKey = `${balances.evm?.toString() ?? ''}:${balances.hc?.toString() ?? ''}`
+  const balanceRefreshKey = balances.hcUsdh?.toString() ?? ''
 
   const quoteRequestId = useRef(0)
-  const [manualSource, setManualSource] = useState<SourceChain | null>(null)
 
   useEffect(() => {
-    // Balance changes can flip the auto route from HyperEVM bridge to direct
-    // HyperCore swap after a deposit credits.
+    // A USDH deposit crediting after mount can flip the route from blocked to
+    // coverable, so re-quote when the HyperCore USDH balance changes.
     void balanceRefreshKey
     const requestId = ++quoteRequestId.current
     setQuote(null)
     setRoute(null)
-    if (!kit || onWrongChain) {
+    setDepthWarning(null)
+    setKnownDepthLimited(false)
+    if (!kit) {
       setIsQuoting(false)
       return
     }
@@ -155,16 +147,40 @@ export function USDHSwap(props: USDHSwapProps) {
       setError(null)
       setIsQuoting(true)
       try {
+        // USDH -> USDC: sell side, HyperCore only. preflightSwap returns the
+        // quote plus the HyperCore balance coverage we gate the button on.
         const nextRoute = await kit.preflightSwap({
-          from: 'USDC',
+          from: 'USDH',
+          to: 'USDC',
           amount: parsedAmount,
           slippageBps,
-          sourceChain:
-            manualSource === 'hc' ? 'hypercore' : manualSource === 'evm' ? 'hyperevm' : 'auto',
+          sourceChain: 'hypercore',
         })
         if (requestId !== quoteRequestId.current) return
-        setRoute(nextRoute)
-        setQuote(nextRoute.quote)
+        let nextQuote = nextRoute.quote
+        try {
+          const book = await kit.getBook(nextRoute.quote.pair)
+          if (requestId !== quoteRequestId.current) return
+          const depth = estimateUsdcFromBidDepth(book.levels[0], parsedAmount)
+          if (depth === null || depth.spentUsdh === 0n) {
+            setKnownDepthLimited(true)
+            setDepthWarning('No visible USDH/USDC bid depth for this amount.')
+          } else if (!depth.fullyCovered) {
+            setKnownDepthLimited(true)
+            setDepthWarning(
+              `Visible bid depth covers ${trimReceive(depth.spentUsdh, USDH_DECIMALS)} of ${trimReceive(parsedAmount, USDH_DECIMALS)} USDH. Reduce the amount or refresh before migrating.`,
+            )
+          } else {
+            setKnownDepthLimited(false)
+            setDepthWarning(null)
+            nextQuote = { ...nextRoute.quote, estimatedReceived: depth.receivedUsdc }
+          }
+        } catch {
+          setKnownDepthLimited(true)
+          setDepthWarning('Unable to verify visible USDH/USDC bid depth. Refresh before migrating.')
+        }
+        setRoute({ ...nextRoute, quote: nextQuote })
+        setQuote(nextQuote)
       } catch (err) {
         if (requestId !== quoteRequestId.current) return
         setError(friendlyError(err))
@@ -173,11 +189,14 @@ export function USDHSwap(props: USDHSwapProps) {
       }
     }, QUOTE_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [kit, parsedAmount, slippageBps, manualSource, onWrongChain, balanceRefreshKey])
+  }, [kit, parsedAmount, slippageBps, balanceRefreshKey])
 
   useEffect(() => {
     setReadOnlyEstimate(null)
-    if (isConnected || onWrongChain || parsedAmount === null || parsedAmount <= 0n) {
+    setReadOnlyQuoteUnavailable(false)
+    setDepthWarning(null)
+    setKnownDepthLimited(false)
+    if (isConnected || parsedAmount === null || parsedAmount <= 0n) {
       setIsReadOnlyQuoting(false)
       return
     }
@@ -188,19 +207,38 @@ export function USDHSwap(props: USDHSwapProps) {
       try {
         const info = createInfoClient({ network, timeoutMs: READ_ONLY_QUOTE_TIMEOUT_MS })
         const pairs = listUsdhSpotPairs(await info.spotMeta())
-        const pair =
-          pairs.find((candidate) => candidate.base === 'USDH' && candidate.quote === 'USDC') ??
-          pairs[0]
-        if (!pair) return
+        const pair = pairs.find(
+          (candidate) => candidate.base === 'USDH' && candidate.quote === 'USDC',
+        )
+        if (!pair) {
+          if (!cancelled) setReadOnlyQuoteUnavailable(true)
+          return
+        }
         const book = await info.l2Book(pair.name)
-        const ask = book.levels[1]?.[0]?.px
-        if (!ask) return
-        const askPrice18 = parseUnits(ask, PRICE_DECIMALS)
-        if (askPrice18 <= 0n) return
-        const nextEstimate = (parsedAmount * 10n ** BigInt(PRICE_DECIMALS)) / askPrice18
-        if (!cancelled) setReadOnlyEstimate(nextEstimate)
+        const depth = estimateUsdcFromBidDepth(book.levels[0], parsedAmount)
+        if (depth === null || depth.spentUsdh === 0n) {
+          if (!cancelled) setReadOnlyQuoteUnavailable(true)
+          return
+        }
+        if (!depth.fullyCovered) {
+          if (!cancelled) {
+            setReadOnlyQuoteUnavailable(true)
+            setDepthWarning(
+              `Visible bid depth covers ${trimReceive(depth.spentUsdh, USDH_DECIMALS)} of ${trimReceive(parsedAmount, USDH_DECIMALS)} USDH.`,
+            )
+          }
+          return
+        }
+        if (!cancelled) {
+          setReadOnlyEstimate(depth.receivedUsdc)
+          setReadOnlyQuoteUnavailable(false)
+          setDepthWarning(null)
+        }
       } catch {
-        if (!cancelled) setReadOnlyEstimate(null)
+        if (!cancelled) {
+          setReadOnlyEstimate(null)
+          setReadOnlyQuoteUnavailable(true)
+        }
       } finally {
         if (!cancelled) setIsReadOnlyQuoting(false)
       }
@@ -210,39 +248,14 @@ export function USDHSwap(props: USDHSwapProps) {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [isConnected, network, onWrongChain, parsedAmount])
+  }, [isConnected, network, parsedAmount])
 
-  const hcCovers = route?.sourceChain === 'hypercore' && route.canSwap
-
-  const evmCovers =
-    parsedAmount !== null &&
-    parsedAmount > 0n &&
-    balances.evm !== undefined &&
-    balances.evmDecimals !== undefined &&
-    scaleAmount(parsedAmount, balances.evmDecimals - USDC_DECIMALS) <= balances.evm
-
-  // Default routing: if HC has enough, swap direct; otherwise bridge from EVM.
-  // The user can override via the source-chain pill.
-  // Hold on the conservative default ("evm", bridge required) until both
-  // balances are loaded — otherwise the pill flips out from under the user
-  // when the HC query resolves a tick after the EVM query.
-  const autoSource: SourceChain = route?.sourceChain === 'hypercore' ? 'hc' : 'evm'
-  const sourceChain = manualSource ?? autoSource
-
-  const requiresBridge = sourceChain === 'evm'
   const belowMinOrderValue =
     parsedAmount !== null && parsedAmount > 0n && parsedAmount < MIN_SWAP_AMOUNT
+  const hcCovers = route?.canSwap ?? false
   const insufficientForRoute =
-    parsedAmount !== null &&
-    parsedAmount > 0n &&
-    !belowMinOrderValue &&
-    ((sourceChain === 'hc' && route !== null && !hcCovers) ||
-      (sourceChain === 'evm' && balances.evm !== undefined && !evmCovers))
-  const activeRouteLoaded =
-    sourceChain === 'hc'
-      ? route !== null
-      : balances.evm !== undefined && balances.evmDecimals !== undefined
-  const activeRouteCovers = sourceChain === 'hc' ? hcCovers : evmCovers
+    parsedAmount !== null && parsedAmount > 0n && !belowMinOrderValue && route !== null && !hcCovers
+  const routeLoaded = route !== null
 
   function reset() {
     setPhase('idle')
@@ -265,7 +278,7 @@ export function USDHSwap(props: USDHSwapProps) {
     setSlippageBps(Math.round(pct * 100))
   }
 
-  async function executeBridgeAndSwap() {
+  async function executeMigration() {
     if (!kit || parsedAmount === null || parsedAmount <= 0n) return
     // Hard guard against double-clicks: setPhase is async, so without this a
     // synchronous double-tap can dispatch two tx requests before the button's
@@ -286,28 +299,20 @@ export function USDHSwap(props: USDHSwapProps) {
       return
     }
 
-    let failurePrefix = ''
+    setPhase('swapping')
     try {
-      const next = await kit.bridgeAndSwap({
-        from: 'USDC',
+      const next = await kit.swap({
+        from: 'USDH',
+        to: 'USDC',
         amount: parsedAmount,
         slippageBps,
-        sourceChain:
-          manualSource === 'hc' ? 'hypercore' : manualSource === 'evm' ? 'hyperevm' : 'auto',
-        onProgress: (event) => {
-          setRoute(event.route)
-          setQuote(event.route.quote)
-          if (event.phase === 'bridging' || event.phase === 'swapping') {
-            failurePrefix = event.phase === 'bridging' ? 'Bridge failed: ' : 'Swap failed: '
-            setPhase(event.phase)
-            if (event.phase === 'bridging') setBridgeStartedAt(Date.now())
-          }
-        },
       })
-      const payload: SwapResultPayload = {
-        orderId: next.swap.orderId,
-        receivedUsdh: next.swap.received,
-        ...(next.bridge?.txHash !== undefined && { txHash: next.bridge.txHash }),
+      const payload: USDHMigrationResultPayload = {
+        orderId: next.orderId,
+        spentUsdh: next.spent,
+        receivedUsdc: next.received,
+        price: next.price,
+        slippageBps: next.slippageBps,
       }
       setResult(payload)
       setPhase('done')
@@ -315,81 +320,52 @@ export function USDHSwap(props: USDHSwapProps) {
       setQuote(null)
       balances.refetch()
       window.setTimeout(() => balances.refetch(), 2_500)
-      onSwapComplete?.(payload)
+      onMigrationComplete?.(payload)
     } catch (err) {
-      const bridgeTimeout = isBridgeTimeoutError(err)
-      setError(bridgeTimeout ? friendlyError(err) : `${failurePrefix}${friendlyError(err)}`)
-      if (bridgeTimeout) {
-        setRoute(null)
-        setQuote(null)
-        balances.refetch()
-        window.setTimeout(() => balances.refetch(), 5_000)
-        window.setTimeout(() => balances.refetch(), 15_000)
-      }
+      setError(friendlyError(err))
       setPhase('idle')
     }
   }
 
-  const inputDisabled = busy || onWrongChain || showingResult
+  const inputDisabled = busy || showingResult
   const canSwap =
     !busy &&
     !showingResult &&
-    !onWrongChain &&
     isConnected &&
     kit !== null &&
     !isApprovingSession &&
     parsedAmount !== null &&
     parsedAmount > 0n &&
     !belowMinOrderValue &&
-    activeRouteLoaded &&
-    activeRouteCovers
+    routeLoaded &&
+    hcCovers &&
+    !knownDepthLimited
 
-  // Display the receive amount: while no quote is in, mirror the input
-  // (USDH is a USD-pegged stable so 1:1 is the honest user-facing default).
-  // When a quote arrives, show the rounded estimate. We never show drift bps
-  // in the headline — the slippage tolerance is the user-facing knob.
   const receiveDisplay = quote
-    ? trimReceive(quote.estimatedReceived, USDC_DECIMALS)
+    ? trimReceive(quote.estimatedReceived, USDH_DECIMALS)
     : readOnlyEstimate !== null
-      ? trimReceive(readOnlyEstimate, USDC_DECIMALS)
-      : parsedAmount && parsedAmount > 0n
-        ? trimReceive(parsedAmount, USDC_DECIMALS)
+      ? trimReceive(readOnlyEstimate, USDH_DECIMALS)
+      : readOnlyQuoteUnavailable
+        ? 'Quote unavailable'
         : '0'
 
-  const payUsdValue = parsedAmount ? formatUsd(parsedAmount, USDC_DECIMALS) : null
+  const payUsdValue = parsedAmount ? formatUsd(parsedAmount, USDH_DECIMALS) : null
   const receiveBigint = quote
     ? quote.estimatedReceived
     : readOnlyEstimate !== null
       ? readOnlyEstimate
-      : parsedAmount && parsedAmount > 0n
-        ? parsedAmount
-        : null
-  const receiveUsdValue = receiveBigint ? formatUsd(receiveBigint, USDC_DECIMALS) : null
-
-  // Active source drives the MAX button.
-  const activeBalance = sourceChain === 'evm' ? balances.evm : balances.hc
-  const activeDecimals = sourceChain === 'evm' ? balances.evmDecimals : balances.hcDecimals
+      : null
+  const receiveUsdValue = receiveBigint ? formatUsd(receiveBigint, USDH_DECIMALS) : null
 
   function setMaxAmount() {
-    if (activeBalance === undefined || activeDecimals === undefined) return
-    // Inverse of scaleAmount: pull native units back to USDC display units.
-    const usdcAmount = scaleAmount(activeBalance, USDC_DECIMALS - activeDecimals)
-    setAmountStr(formatUnits(usdcAmount, USDC_DECIMALS))
+    if (balances.hcUsdh === undefined || balances.hcUsdhDecimals === undefined) return
+    // Inverse of scaleAmount: pull native units back to USDH display units.
+    const usdhAmount = scaleAmount(balances.hcUsdh, USDH_DECIMALS - balances.hcUsdhDecimals)
+    setAmountStr(formatUnits(usdhAmount, USDH_DECIMALS))
   }
 
   const hasMaxBalance =
-    activeBalance !== undefined && activeDecimals !== undefined && activeBalance > 0n
-  const bridgeElapsedSeconds =
-    phase === 'bridging' && bridgeStartedAt !== null
-      ? Math.max(0, Math.floor((nowMs - bridgeStartedAt) / 1_000))
-      : 0
-
-  function toggleSourceChain() {
-    setManualSource(sourceChain === 'evm' ? 'hc' : 'evm')
-  }
-
-  const showInlineNote =
-    isConnected && requiresBridge && parsedAmount !== null && parsedAmount > 0n && phase === 'idle'
+    balances.hcUsdh !== undefined && balances.hcUsdhDecimals !== undefined && balances.hcUsdh > 0n
 
   return (
     <div
@@ -398,31 +374,36 @@ export function USDHSwap(props: USDHSwapProps) {
       style={{ maxWidth: 'min(480px, calc(100vw - 2rem))' }}
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-usdh-text">Swap to USDH</h3>
+        <h3 className="text-sm font-medium text-usdh-text">Migrate USDH to USDC</h3>
         {!hideNetworkToggle && (
           <NetworkToggle network={network} onChange={setNetwork} disabled={networkToggleLocked} />
         )}
       </div>
 
-      {onWrongChain && (
-        <WrongNetworkBanner
-          onSwitch={() => switchChain({ chainId: expectedChainId })}
-          isSwitching={isSwitching}
-        />
+      <p className="mt-2 rounded-lg border border-usdh-border bg-usdh-surface/60 px-3 py-2 text-[11px] leading-snug text-usdh-text-soft">
+        USDH is being sunset on Hyperliquid. This converts your HyperCore USDH balance back to USDC.
+      </p>
+      {isConnected && (
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-usdh-border/70 bg-usdh-surface/40 px-3 py-2 text-[11px] text-usdh-text-soft">
+          <span>HyperCore USDH balance</span>
+          <span>
+            <span className="font-mono tabular-nums text-usdh-text">
+              {formatBalance(balances.hcUsdh, balances.hcUsdhDecimals)}
+            </span>{' '}
+            USDH
+          </span>
+        </div>
       )}
-
-      {isConnected && <BalanceRow balances={balances} sourceChain={sourceChain} />}
 
       <div className="mt-3">
         <PayCard
           amountStr={amountStr}
           onAmountChange={setAmountStr}
           inputDisabled={inputDisabled}
-          sourceChain={sourceChain}
-          onSourceToggle={toggleSourceChain}
           payUsdValue={payUsdValue}
           hasMaxBalance={hasMaxBalance}
           onMax={setMaxAmount}
+          payTicker="USDH"
         />
         <ArrowDivider />
         <ReceiveCard
@@ -430,19 +411,23 @@ export function USDHSwap(props: USDHSwapProps) {
           receiveUsdValue={receiveUsdValue}
           isQuoting={isQuoting || isReadOnlyQuoting}
           hasQuote={quote !== null || readOnlyEstimate !== null}
+          receiveTicker="USDC"
         />
       </div>
 
       {!showingResult && (
         <>
+          {depthWarning && (
+            <p className="mt-2 text-[11px] leading-snug text-usdh-text-soft">{depthWarning}</p>
+          )}
           {insufficientForRoute && (
             <p className="mt-2 text-[11px] text-usdh-text-soft">
-              Exceeds your {sourceChain === 'evm' ? 'HyperEVM' : 'HyperCore'} USDC balance.
+              Exceeds your HyperCore USDH balance.
             </p>
           )}
           {belowMinOrderValue && (
             <p className="mt-2 text-[11px] text-usdh-text-soft">
-              Hyperliquid spot orders need more than 10 USDC. Use {MIN_SWAP_DISPLAY}+ USDC.
+              Hyperliquid spot orders need more than 10 USDH. Use {MIN_SWAP_DISPLAY}+ USDH.
             </p>
           )}
 
@@ -461,20 +446,16 @@ export function USDHSwap(props: USDHSwapProps) {
             insufficient={insufficientForRoute}
             belowMinOrderValue={belowMinOrderValue}
             isConnected={isConnected}
-            requiresBridge={requiresBridge}
-            sourceChain={sourceChain}
+            requiresBridge={false}
+            sourceChain="hc"
             needsTradingSession={!sessionReady}
             disabled={!canSwap}
-            onClick={executeBridgeAndSwap}
+            onClick={executeMigration}
+            payTicker="USDH"
+            actionLabel="Migrate"
+            connectLabel="Connect wallet to migrate"
+            workingLabel="Migrating"
           />
-
-          {phase === 'bridging' && (
-            <p className="mt-2 text-center text-[11px] leading-snug text-usdh-text-faint">
-              Bridging usually credits in about 1-2 minutes. Checking HyperCore credit for{' '}
-              <span className="font-mono text-usdh-text-soft">{bridgeElapsedSeconds}s</span>.
-            </p>
-          )}
-          {showInlineNote && <InlineSystemAddressNote />}
         </>
       )}
       {error && <ErrorAlert message={error} />}
@@ -482,10 +463,14 @@ export function USDHSwap(props: USDHSwapProps) {
         <ResultPanel
           result={{
             orderId: result.orderId,
-            receivedAmount: result.receivedUsdh,
-            ...(result.txHash !== undefined && { txHash: result.txHash }),
+            receivedAmount: result.receivedUsdc,
+            spentAmount: result.spentUsdh,
+            ...(parsedAmount !== null && { requestedAmount: parsedAmount }),
           }}
           onReset={reset}
+          receiveTicker="USDC"
+          spentTicker="USDH"
+          resetLabel="Migrate again"
         />
       )}
 
@@ -498,10 +483,33 @@ export function USDHSwap(props: USDHSwapProps) {
   )
 }
 
-function isBridgeTimeoutError(err: unknown): boolean {
-  if (err instanceof BridgeTimeoutError) return true
-  if (isBridgeAndSwapError(err)) {
-    return err.cause instanceof BridgeTimeoutError
+function estimateUsdcFromBidDepth(
+  bids: Array<{ px: string; sz: string }>,
+  desiredUsdh: bigint,
+): BidDepthEstimate | null {
+  if (desiredUsdh <= 0n) return null
+  let remainingUsdh = desiredUsdh
+  let spentUsdh = 0n
+  let receivedUsdc = 0n
+
+  try {
+    for (const level of bids) {
+      if (remainingUsdh <= 0n) break
+      const levelSizeUsdh = parseUnits(level.sz, USDH_DECIMALS)
+      const bidPrice18 = parseUnits(level.px, PRICE_DECIMALS)
+      if (levelSizeUsdh <= 0n || bidPrice18 <= 0n) continue
+      const fillUsdh = levelSizeUsdh < remainingUsdh ? levelSizeUsdh : remainingUsdh
+      spentUsdh += fillUsdh
+      receivedUsdc += (fillUsdh * bidPrice18) / TEN_18
+      remainingUsdh -= fillUsdh
+    }
+  } catch {
+    return null
   }
-  return false
+
+  return {
+    receivedUsdc,
+    spentUsdh,
+    fullyCovered: remainingUsdh === 0n,
+  }
 }

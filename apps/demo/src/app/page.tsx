@@ -11,7 +11,7 @@ export default function Home() {
         <ConnectButton />
       </header>
       <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-        Swap stables into USDH on Hyperliquid.
+        Migrate remaining USDH back to USDC on Hyperliquid.
       </p>
       <div className="mt-5">
         <SwapSection />

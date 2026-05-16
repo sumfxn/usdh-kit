@@ -2,6 +2,10 @@
 
 What `@usdh-kit/sdk` actually does under the hood, in the order it does it.
 
+Status: this architecture is preserved for USDH sunset support and historical
+reference. The primary current path is `USDH -> USDC` migration; `USDC -> USDH`
+flows remain documented as legacy acquisition support.
+
 ## Layout
 
 ```

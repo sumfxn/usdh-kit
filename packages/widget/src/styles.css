@@ -5,7 +5,7 @@
  *
  * The widget defaults to light mode tokens on `.usdh-widget`; when the
  * effective theme is dark (computed from the `theme` prop or the user's
- * system preference) USDHSwap adds a `dark` class to the root which
+ * system preference) the widget adds a `dark` class to the root which
  * overrides each token. Tokens are RGB triples (no `rgb()` wrapper) so
  * the Tailwind `<alpha-value>` substitution can apply opacity (e.g.
  * `bg-usdh-surface/40`).

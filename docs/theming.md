@@ -5,9 +5,9 @@
 ## The `theme` prop
 
 ```tsx
-<USDHSwap network="mainnet" theme="auto" />   // default — follows prefers-color-scheme
-<USDHSwap network="mainnet" theme="dark" />   // force dark
-<USDHSwap network="mainnet" theme="light" />  // force light
+<USDHMigration network="mainnet" theme="auto" />   // default - follows prefers-color-scheme
+<USDHMigration network="mainnet" theme="dark" />   // force dark
+<USDHMigration network="mainnet" theme="light" />  // force light
 ```
 
 `auto` listens to the system preference via `matchMedia('(prefers-color-scheme: dark)')` and re-renders when it changes. SSR renders dark by default to match the most common DeFi expectation; the client effect corrects to light if the system says so. This causes a one-frame flash for light-mode auto users; the standard fix is to read a server-side cookie and pass it as `theme` from the parent (see Next.js example below).
@@ -62,19 +62,19 @@ Override any token in your own stylesheet, loaded **after** the widget's stylesh
 }
 ```
 
-You don't need to override every token — unset ones inherit from the defaults.
+You don't need to override every token - unset ones inherit from the defaults.
 
 ## Loading the stylesheet
 
 The widget's compiled stylesheet is exposed at `@usdh-kit/widget/styles.css`. Import it once at your application root:
 
 ```ts
-// Next.js — app/layout.tsx
+// Next.js - app/layout.tsx
 import '@usdh-kit/widget/styles.css'
 ```
 
 ```ts
-// Vite — main.tsx
+// Vite - main.tsx
 import '@usdh-kit/widget/styles.css'
 ```
 
@@ -91,7 +91,7 @@ import { cookies } from 'next/headers'
 const themeCookie = cookies().get('usdh-theme')?.value as 'dark' | 'light' | undefined
 const theme = themeCookie ?? 'auto'
 
-return <USDHSwap network="mainnet" theme={theme} />
+return <USDHMigration network="mainnet" theme={theme} />
 ```
 
 Then on the client, write the cookie when the resolved theme is known:
@@ -108,7 +108,7 @@ function ThemeCookie({ theme }: { theme: 'dark' | 'light' | 'auto' }) {
 }
 ```
 
-`useEffectiveTheme(theme)` is the same hook the widget uses internally — you can also call it standalone if you're building custom UI with the SDK and want auto-detection without rendering the widget.
+`useEffectiveTheme(theme)` is the same hook the widget uses internally - you can also call it standalone if you're building custom UI with the SDK and want auto-detection without rendering the widget.
 
 ## Tailwind setup
 

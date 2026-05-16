@@ -16,7 +16,7 @@ export function getComponentRecipes(slug: ComponentSlug): ComponentRecipe[] {
           title: 'Drop in the swap entry',
           description: 'Use the packaged widget as the only write boundary.',
           steps: [
-            'Mount USDHSwap inside your wallet route.',
+            'Mount USDHMigration inside your wallet route.',
             'Keep quote context around it read-only.',
             'Handle completion and analytics in the parent app.',
           ],

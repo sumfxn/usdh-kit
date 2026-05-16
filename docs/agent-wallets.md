@@ -9,7 +9,7 @@ Some browser wallets reject or mis-handle that direct order-signing flow. The pr
 | Role | What it does |
 |---|---|
 | Master wallet | Owns funds, signs agent approval, sends HyperEVM bridge transactions. |
-| Agent wallet | Signs Hyperliquid L1 orders such as `USDC -> USDH`. |
+| Agent wallet | Signs Hyperliquid L1 orders such as the sunset `USDH -> USDC` migration swap. |
 | `accountAddress` | Tells the SDK which master account to read for balances, routes, and bridge ownership. |
 
 The SDK never treats the agent as the funded account when `accountAddress` is set.

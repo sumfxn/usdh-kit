@@ -15,7 +15,7 @@ import {
   visibleComponentEntries,
 } from '../lib/component-registry'
 
-const categories = ['All', 'Widget', 'USDH', 'HIP-4', 'Trading'] as const
+const categories = ['All', 'Widget'] as const
 type CategoryFilter = (typeof categories)[number]
 
 export function ComponentRegistryExperience() {
@@ -47,10 +47,11 @@ export function ComponentRegistryExperience() {
       <header className="space-y-4">
         <div className="max-w-[680px]">
           <h1 className="max-w-[19rem] break-words text-2xl font-semibold tracking-normal text-neutral-950 text-balance dark:text-neutral-50 sm:max-w-[720px] sm:text-3xl">
-            USDH components for app builders.
+            USDH sunset migration kit.
           </h1>
           <p className="mt-3 max-w-[21rem] break-words text-sm leading-6 text-neutral-600 dark:text-neutral-400 sm:max-w-2xl">
-            Copyable USDH and HIP-4 patterns with preview, code, contract, and examples.
+            A migration widget for remaining USDH balances, with the legacy swap kept only for
+            compatibility.
           </p>
         </div>
       </header>
